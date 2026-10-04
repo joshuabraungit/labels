@@ -183,6 +183,10 @@ button {
   border: 1px solid var(--divider);
   border-radius: var(--radius);
   color: var(--text);
+}
+
+/* Clamp the inner text, so padding can't reveal part of a hidden line. */
+.preview span {
   display: -webkit-box;
   -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;

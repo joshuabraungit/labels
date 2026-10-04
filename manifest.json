@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Labels for LinkedIn posts",
   "short_name": "Labels",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Save LinkedIn posts with your own labels and find them later. Stored locally in this Chrome profile.",
   "permissions": ["storage", "activeTab", "scripting"],
   "action": {

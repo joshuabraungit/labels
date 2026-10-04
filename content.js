@@ -42,8 +42,8 @@
     .head h2 { flex: 1; margin: 0; font-size: 15px; font-weight: 600; }
     .close { border: 0; background: transparent; color: #6b6a75; font-size: 20px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
     .close:hover { background: #f6f5f9; color: #1c1b22; }
-    .preview {
-      margin: 0 0 12px; padding: 10px 12px; border: 1px solid #ececf0; border-radius: 8px;
+    .preview { margin: 0 0 12px; padding: 10px 12px; border: 1px solid #ececf0; border-radius: 8px; }
+    .preview span {
       display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
     }
     .preview.fallback { color: #6b6a75; font-style: italic; }
@@ -282,7 +282,7 @@
         h('h2', null, 'Save to Labels'),
         h('button', { class: 'close', type: 'button', 'aria-label': 'Close', onClick: closePanel }, '×'),
       ),
-      excerpt ? h('p', { class: 'preview' }, excerpt) : h('p', { class: 'preview fallback' }, FALLBACK_PREVIEW),
+      h('p', { class: `preview${excerpt ? '' : ' fallback'}` }, h('span', null, excerpt || FALLBACK_PREVIEW)),
       existing && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
       p.loading ? h('div', { class: 'loading' }, 'Loading your labels…') : renderPickerBody(),
     ];

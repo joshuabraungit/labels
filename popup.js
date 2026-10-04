@@ -263,7 +263,7 @@ function renderChecklist(selection, onChange) {
 }
 
 function renderPreview(excerpt) {
-  return excerpt ? h('p', { class: 'preview' }, excerpt) : h('p', { class: 'preview fallback' }, FALLBACK_PREVIEW);
+  return h('p', { class: `preview${excerpt ? '' : ' fallback'}` }, h('span', null, excerpt || FALLBACK_PREVIEW));
 }
 
 function renderSave() {
