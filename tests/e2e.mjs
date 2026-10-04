@@ -50,6 +50,7 @@ const POST_A = 'https://www.linkedin.com/feed/update/urn:li:activity:72123456789
 const POST_B = 'https://www.linkedin.com/posts/jane-doe_launch-activity-7200000000000000001-AbCd/';
 const FEED = 'https://www.linkedin.com/feed/';
 const FEED2 = 'https://www.linkedin.com/feed/following/';
+const FEED3 = 'https://www.linkedin.com/feed/hashtag/sdui/';
 const POST_C = 'https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/';
 const POST_D = 'https://www.linkedin.com/feed/update/urn:li:activity:7444444444444444444/';
 const POST_E = 'https://www.linkedin.com/feed/update/urn:li:activity:7555555555555555555/';
@@ -77,6 +78,7 @@ async function launch() {
         ? read('post-new-markup.html').replaceAll('7333333333333333333', '7555555555555555555')
         : read('post-no-text.html');
     } else if (url.startsWith(FEED2)) body = read('feed-new-markup.html');
+    else if (url.startsWith(FEED3)) body = read('feed-sdui.html');
     else body = read('feed.html');
     return route.fulfill({ contentType: 'text/html', body });
   });
@@ -590,6 +592,48 @@ try {
     assert.ok(!/Feed post|Alice|Struggling/.test(outline), 'outline has no page text');
     await p.close();
     await feed.close();
+  });
+
+  await check('newer LinkedIn feed: posts identified through their comment-thread keys', async () => {
+    const sdui = await context.newPage();
+    await sdui.setViewportSize({ width: 1100, height: 900 });
+    await sdui.goto(FEED3);
+    const S1 = 'urn:li:activity:7511803322715041792';
+    const S2 = 'urn:li:ugcPost:7453261968926224384';
+    const S3 = 'urn:li:activity:7508962570318499840';
+    await feedButton(sdui, S3).waitFor();
+    const ids = await sdui.locator('[data-labels-ui="button"]').evaluateAll(els => els.map(e => e.dataset.labelsPost));
+    assert.deepEqual(ids.sort(), [S1, S3, S2].sort(), 'one button per post, none on the ad');
+    for (const id of [S1, S2, S3]) {
+      assert.equal(
+        await sdui.locator(`[data-labels-post="${id}"]`).evaluate(el => el.previousElementSibling?.className),
+        'bar-row',
+        `button for ${id} sits right under the icon-only action bar`,
+      );
+    }
+    await shot(sdui, '12-sdui-feed');
+
+    await feedButton(sdui, S1).click();
+    assert.equal(
+      await panel(sdui).locator('.preview').textContent(),
+      'SDUI post one: here is one of the best cold DMs I have ever received. He told me exactly who he is.',
+    );
+    await panel(sdui).getByRole('button', { name: 'Save', exact: true }).click();
+    await panel(sdui).getByText('Saved \u2713').waitFor();
+    await sdui.keyboard.press('Escape');
+
+    await feedButton(sdui, S3).click();
+    assert.equal(
+      await panel(sdui).locator('.preview').textContent(),
+      'SDUI post three has comments loaded underneath it.',
+    );
+    await sdui.keyboard.press('Escape');
+
+    const p = await openPopup(context, extId, FEED);
+    const stored = await storedData(p);
+    assert.equal(stored.posts[S1].url, `https://www.linkedin.com/feed/update/${S1}/`);
+    await p.close();
+    await sdui.close();
   });
 
   console.log(`\nAll ${step} end-to-end checks passed.`);

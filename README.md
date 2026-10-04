@@ -12,7 +12,7 @@ Labels uses its own save action. It doesn't touch LinkedIn's Save button or Save
 
 ## Install (unpacked)
 
-1. Download `release/labels-extension-1.1.0.zip` and unzip it. You should get a folder with `manifest.json` at the top.
+1. Download `release/labels-extension-1.1.1.zip` and unzip it. You should get a folder with `manifest.json` at the top.
 2. In Chrome, go to `chrome://extensions`.
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and pick the unzipped folder.

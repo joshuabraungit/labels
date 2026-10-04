@@ -207,3 +207,16 @@ test('storage failures surface and do not wedge the queue', async () => {
   const { data } = await store.createLabel('One');
   assert.equal(Object.keys(data.labels).length, 1);
 });
+
+test('decodes LinkedIn feed thread keys into post URNs', async () => {
+  const { readFileSync } = await import('node:fs');
+  const vm = await import('node:vm');
+  const context = vm.createContext({ atob, Date, BigInt, Uint8Array, Number });
+  vm.runInContext(readFileSync(new URL('../lib/capture.js', import.meta.url), 'utf8'), context);
+  const decode = token => vm.runInContext(`labelsDecodeThreadKey(${JSON.stringify(token)})`, context);
+  assert.equal(decode('CgsIgMC7kNTUpL/QAQ'), 'urn:li:activity:7511803322715041792');
+  assert.equal(decode('CgsIgMDOuI3rmLXQAQ'), 'urn:li:activity:7508962570318499840');
+  assert.equal(decode('EgsIgMC1vLGRp+/OAQ'), 'urn:li:ugcPost:7453261968926224384');
+  assert.equal(decode('not-a-token'), null);
+  assert.equal(decode('CgIIAg'), null, 'implausible IDs are rejected');
+});

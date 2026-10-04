@@ -120,7 +120,7 @@
   // ---------- buttons on posts ----------
 
   function actionBar(container) {
-    const social = [...container.querySelectorAll('button, [role="button"]')].filter(
+    const social = [...container.querySelectorAll('button, [role="button"], a[aria-label]')].filter(
       b => labelsIsSocialButton(b) && !b.closest(LABELS_COMMENTS) && !b.closest('[data-labels-ui]'),
     );
     if (!social.length) return null;
