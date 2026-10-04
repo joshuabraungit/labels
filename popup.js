@@ -39,6 +39,7 @@ const state = {
   dialog: null, // { kind: 'rename' | 'delete' | 'remove', value?, error?, postId? }
   helpMessage: '',
   helpError: '',
+  diagStatus: '',
   focus: null,
 };
 
@@ -69,6 +70,16 @@ function errorMessage(err) {
 function go(view, extra = {}) {
   Object.assign(state, { view, menu: null, dialog: null, newLabel: { open: false, value: '', error: '' } }, extra);
   render();
+}
+
+function savedDate(ms) {
+  const date = new Date(ms);
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  });
 }
 
 function openPost(url) {
@@ -276,6 +287,7 @@ function renderSave() {
     'div',
     null,
     renderPreview(page.excerpt || existing?.excerpt),
+    !page.excerpt && !existing?.excerpt && renderPreviewHelp(),
     existing && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
     renderNewLabel(label => {
       state.selection.add(label.id);
@@ -290,6 +302,33 @@ function renderSave() {
       existing ? 'Update' : 'Save',
     ),
     h('div', { class: 'status', role: 'status' }, state.saveStatus),
+  );
+}
+
+// Shown when no preview text was found. Copies a text-free outline of the page so the
+// reader can be adjusted to LinkedIn's current layout.
+function renderPreviewHelp() {
+  const copy = async () => {
+    try {
+      const [injection] = await chrome.scripting.executeScript({
+        target: { tabId: state.page.tabId },
+        func: capturePostText,
+        args: [state.page.id, 'diagnose'],
+      });
+      await navigator.clipboard.writeText(injection?.result?.diagnosis || 'no diagnosis');
+      state.diagStatus = 'Copied. It shows the page layout only, no post text or names.';
+    } catch (err) {
+      console.warn('Labels: could not copy page info', err);
+      state.diagStatus = 'Couldn\u2019t copy the page info.';
+    }
+    render();
+  };
+  return h(
+    'p',
+    { class: 'meta' },
+    'No preview found. You can still save. ',
+    h('button', { class: 'link-btn inline', onClick: copy }, 'Copy page info'),
+    state.diagStatus && h('span', { class: 'diag' }, ` ${state.diagStatus}`),
   );
 }
 
@@ -400,7 +439,11 @@ function renderLabel() {
                 h(
                   'button',
                   { class: 'post-open', title: post.url, onClick: () => openPost(post.url) },
-                  h('span', { class: `excerpt${post.excerpt ? '' : ' fallback'}` }, post.excerpt || FALLBACK_PREVIEW),
+                  h(
+                    'span',
+                    { class: `excerpt${post.excerpt ? '' : ' fallback'}` },
+                    post.excerpt || `${FALLBACK_PREVIEW} \u00B7 saved ${savedDate(post.savedAt)}`,
+                  ),
                 ),
                 h(
                   'button',
@@ -772,14 +815,15 @@ async function detectPage() {
     const [injection] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: capturePostText,
-      args: [page.id],
+      args: [page.id, 'capture'],
     });
     text = injection?.result?.text ?? '';
+    console.info('Labels: preview source', injection?.result?.source);
   } catch (err) {
     // Saving still works with the "Open saved post" preview.
     console.warn('Labels: could not read the post text', err);
   }
-  return { ...page, excerpt: makeExcerpt(text) };
+  return { ...page, tabId: tab.id, excerpt: makeExcerpt(text) };
 }
 
 async function init() {
@@ -787,7 +831,18 @@ async function init() {
   const [data, page] = await Promise.all([store.load(), detectPage()]);
   state.data = data;
   state.page = page;
-  if (page.kind === 'post' && data.posts[page.id]) state.selection = new Set(data.posts[page.id].labelIds);
+  const existing = page.kind === 'post' && data.posts[page.id];
+  if (existing) {
+    state.selection = new Set(existing.labelIds);
+    // Posts saved before a preview could be read get one the next time they're opened.
+    if (!existing.excerpt && page.excerpt) {
+      try {
+        state.data = (await store.fillExcerpt(page.id, page.excerpt)).data;
+      } catch (err) {
+        console.warn('Labels: could not add the preview', err);
+      }
+    }
+  }
   if (isTab) state.view = location.hash === '#help' ? 'help' : 'labels';
   else state.view = page.kind === 'post' || page.kind === 'post-unidentified' ? 'save' : 'labels';
   render();

@@ -544,3 +544,12 @@ button {
   margin: 0;
   color: var(--text);
 }
+
+.link-btn.inline {
+  padding: 0;
+  font-size: inherit;
+}
+
+.diag {
+  color: var(--success);
+}

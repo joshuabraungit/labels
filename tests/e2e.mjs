@@ -51,6 +51,11 @@ writeFileSync(
 const POST_A = 'https://www.linkedin.com/feed/update/urn:li:activity:7212345678901234567/';
 const POST_B = 'https://www.linkedin.com/posts/jane-doe_launch-activity-7200000000000000001-AbCd/';
 const FEED = 'https://www.linkedin.com/feed/';
+const POST_C = 'https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/';
+const POST_D = 'https://www.linkedin.com/feed/update/urn:li:activity:7444444444444444444/';
+const POST_E = 'https://www.linkedin.com/feed/update/urn:li:activity:7555555555555555555/';
+// POST_E starts out without readable text, then "loads" it, to test preview backfill.
+let postEHasText = false;
 
 async function launch() {
   const context = await chromium.launchPersistentContext(profile, {
@@ -62,12 +67,18 @@ async function launch() {
   });
   await context.route('https://www.linkedin.com/**', route => {
     const url = route.request().url();
-    const file = url.includes('activity:7212345678901234567')
-      ? 'post-page.html'
-      : url.includes('activity-7200000000000000001')
-        ? 'post-no-text.html'
-        : 'feed.html';
-    return route.fulfill({ contentType: 'text/html', body: readFileSync(join(fixtures, file)) });
+    const read = file => readFileSync(join(fixtures, file), 'utf8');
+    let body;
+    if (url.includes('activity:7212345678901234567')) body = read('post-page.html');
+    else if (url.includes('activity-7200000000000000001')) body = read('post-no-text.html');
+    else if (url.includes('activity:7333333333333333333')) body = read('post-new-markup.html');
+    else if (url.includes('activity:7444444444444444444')) body = read('post-title-only.html');
+    else if (url.includes('activity:7555555555555555555')) {
+      body = postEHasText
+        ? read('post-new-markup.html').replaceAll('7333333333333333333', '7555555555555555555')
+        : read('post-no-text.html');
+    } else body = read('feed.html');
+    return route.fulfill({ contentType: 'text/html', body });
   });
   let [sw] = context.serviceWorkers();
   if (!sw) sw = await context.waitForEvent('serviceworker');
@@ -388,6 +399,66 @@ try {
     await p.getByRole('button', { name: 'Back' }).click();
     assert.deepEqual(await labelsRows(p), ['Launches:1', 'Uncategorized:0']);
     await p.close();
+  });
+
+  await check('layout without known class names: captures the post, not header or comments', async () => {
+    const tab = await context.newPage();
+    await tab.goto(POST_C);
+    const p = await openPopup(context, extId, POST_C);
+    const preview = await p.locator('.preview').textContent();
+    assert.ok(
+      preview.startsWith('Contrary to seemingly every single person in tech / SaaS, I hate Wispr Flow.'),
+      preview,
+    );
+    for (const bad of ['Finn', 'Founder', 'Follow', 'COMMENT', 'Struggling', 'reactions', 'more', '10h']) {
+      assert.ok(!preview.includes(bad), `preview contains ${bad}: ${preview}`);
+    }
+    await p.close();
+    await tab.close();
+  });
+
+  await check('falls back to the tab title without the author name', async () => {
+    const tab = await context.newPage();
+    await tab.goto(POST_D);
+    const p = await openPopup(context, extId, POST_D);
+    assert.equal(
+      await p.locator('.preview').textContent(),
+      'Cold email is not dead, your offer is. Here is the 3-line email',
+    );
+    await p.close();
+    await tab.close();
+  });
+
+  await check('missing previews show the save date, offer page info, and fill in later', async () => {
+    const tab = await context.newPage();
+    await tab.goto(POST_E);
+    let p = await openPopup(context, extId, POST_E);
+    assert.equal(await p.locator('.preview').textContent(), 'Open saved post');
+    // Headless Chrome won't grant clipboard access to extension pages, so capture the write.
+    await p.evaluate(() => {
+      navigator.clipboard.writeText = async text => (window.copiedText = text);
+    });
+    await p.getByRole('button', { name: 'Copy page info' }).click();
+    await p.getByText('Copied.', { exact: false }).waitFor();
+    const outline = await p.evaluate(() => window.copiedText);
+    assert.match(outline, /container: found-by-class/);
+    assert.match(outline, /data-urn="urn:li:activity:<ID>"/);
+    assert.ok(!/Image only post|LinkedIn/.test(outline.split('\n').slice(5).join('\n')), 'outline has no page text');
+    await p.getByRole('button', { name: 'Save', exact: true }).click();
+    await p.getByText('Saved \u2713').waitFor();
+    await p.getByRole('tab', { name: 'Your labels' }).click();
+    await p.locator('.label-row', { hasText: 'Uncategorized' }).click();
+    assert.match(await p.locator('.post-open').first().textContent(), /^Open saved post \u00B7 saved \w{3} \d{1,2}$/);
+    await p.close();
+
+    postEHasText = true;
+    await tab.reload();
+    p = await openPopup(context, extId, POST_E);
+    await p.getByRole('tab', { name: 'Your labels' }).click();
+    await p.locator('.label-row', { hasText: 'Uncategorized' }).click();
+    assert.ok((await p.locator('.post-open').first().textContent()).startsWith('Contrary to seemingly'));
+    await p.close();
+    await tab.close();
   });
 
   console.log(`\nAll ${step} end-to-end checks passed.`);
