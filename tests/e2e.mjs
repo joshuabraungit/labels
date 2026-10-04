@@ -636,6 +636,88 @@ try {
     await sdui.close();
   });
 
+  // ---------- keyboard shortcut ----------
+  // Automation can't press a Chrome command shortcut, so these send the same message the
+  // background worker sends when the shortcut is pressed.
+  const pressShortcut = async tabUrl => {
+    const p = await openPopup(context, extId, FEED);
+    await p.evaluate(async url => {
+      const tabs = await globalThis.realTabsQuery({});
+      const tab = tabs.find(t => (t.url || '').startsWith(url));
+      await chrome.tabs.sendMessage(tab.id, { type: 'labels-shortcut' });
+    }, tabUrl);
+    await p.close();
+  };
+  const outlined = (page, id) =>
+    page.locator(`[data-labels-post="${id}"]`).evaluate(host => {
+      for (let el = host.parentElement; el; el = el.parentElement) if (el.style.outline) return true;
+      return false;
+    });
+  const focusedInPicker = page =>
+    page.evaluate(() => document.querySelector('[data-labels-ui="panel"]')?.shadowRoot.activeElement?.dataset.focus);
+
+  await check('shortcut: opens the picker for the post under the mouse, keyboard-only save', async () => {
+    const sdui = await context.newPage();
+    await sdui.setViewportSize({ width: 1100, height: 900 });
+    await sdui.goto(FEED3);
+    const S3 = 'urn:li:activity:7508962570318499840';
+    await feedButton(sdui, S3).waitFor();
+    await sdui.getByText('SDUI post three has comments loaded underneath it.').hover();
+    await pressShortcut(FEED3);
+    await panel(sdui).waitFor();
+    assert.equal(
+      await panel(sdui).locator('.preview').textContent(),
+      'SDUI post three has comments loaded underneath it.',
+    );
+    assert.equal(await outlined(sdui, S3), true, 'the chosen post is outlined');
+    await sdui.waitForFunction(
+      () => document.querySelector('[data-labels-ui="panel"]')?.shadowRoot.activeElement?.type === 'checkbox',
+    );
+    const first = await focusedInPicker(sdui);
+    await sdui.keyboard.press('Space');
+    assert.equal(await focusedInPicker(sdui), first, 'focus stays on the checkbox after ticking it');
+    await sdui.keyboard.press('Enter');
+    await panel(sdui).getByText('Saved \u2713').waitFor();
+    await sdui.keyboard.press('Escape');
+    await panel(sdui).waitFor({ state: 'detached' });
+    assert.equal(await outlined(sdui, S3), false, 'outline removed on close');
+    const p = await openPopup(context, extId, FEED);
+    assert.equal((await storedData(p)).posts[S3].labelIds.length, 1);
+    await p.close();
+
+    // Not hovering a post: the post filling most of the screen is used; pressing again closes.
+    await sdui.mouse.move(1090, 5);
+    await sdui.evaluate(() => window.scrollTo(0, 0));
+    await pressShortcut(FEED3);
+    await panel(sdui).waitFor();
+    assert.match(await panel(sdui).locator('.preview').textContent(), /^SDUI post one/);
+    await pressShortcut(FEED3);
+    await panel(sdui).waitFor({ state: 'detached' });
+    await sdui.close();
+  });
+
+  await check('shortcut: explains when there is no post to label', async () => {
+    const tab = await context.newPage();
+    await tab.goto(POST_D);
+    await pressShortcut(POST_D);
+    await tab.locator('[data-labels-ui="toast"] .toast').waitFor();
+    assert.match(await tab.locator('[data-labels-ui="toast"] .toast').textContent(), /No post to label here/);
+    await tab.close();
+  });
+
+  await check('shortcut: registered, and shown in Help', async () => {
+    const p = await openPopup(context, extId, FEED);
+    const commands = await p.evaluate(() => chrome.commands.getAll());
+    assert.ok(
+      commands.some(c => c.name === 'label-post'),
+      'label-post command is registered',
+    );
+    await p.getByRole('button', { name: 'Help' }).click();
+    await p.locator('.shortcut').waitFor();
+    assert.match(await p.locator('.shortcut').textContent(), /keyboard shortcut/i);
+    await p.close();
+  });
+
   console.log(`\nAll ${step} end-to-end checks passed.`);
 } finally {
   await context.close();

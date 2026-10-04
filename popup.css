@@ -557,3 +557,21 @@ button {
 .diag {
   color: var(--success);
 }
+
+kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid #d9d8df;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: #f7f7f9;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.shortcut {
+  margin: 0 0 12px;
+}

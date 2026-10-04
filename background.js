@@ -53,3 +53,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   return true;
 });
+
+// Keyboard shortcut (Alt+Shift+L by default, changeable at chrome://extensions/shortcuts).
+// On LinkedIn it opens the label picker for the post being looked at; elsewhere it opens
+// the Labels popup.
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command !== 'label-post') return;
+  const target = tab ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+  try {
+    if (!target?.id) throw new Error('no tab');
+    const reply = await chrome.tabs.sendMessage(target.id, { type: 'labels-shortcut' });
+    if (reply?.handled) return;
+  } catch {
+    // Not a LinkedIn tab (or it was open before Labels was installed).
+  }
+  try {
+    await chrome.action.openPopup();
+  } catch (err) {
+    console.warn('Labels: could not open the popup', err);
+  }
+});

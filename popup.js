@@ -51,6 +51,7 @@ const state = {
   helpMessage: '',
   helpError: '',
   diagStatus: '',
+  shortcut: null, // current key for the label-post command ('' if unassigned)
   focus: null,
 };
 
@@ -532,6 +533,23 @@ function renderHelp() {
       null,
       'To save a post, click the Label button under it in your LinkedIn feed. Or open the post on its own page and click the Labels toolbar button.',
     ),
+    state.shortcut !== null &&
+      h(
+        'p',
+        { class: 'shortcut' },
+        state.shortcut
+          ? [
+              'Keyboard shortcut: ',
+              h('kbd', null, state.shortcut),
+              ' labels the post under your mouse, or the one most in view. ',
+            ]
+          : 'Set a keyboard shortcut to label the post you\u2019re looking at. ',
+        h(
+          'button',
+          { class: 'link-btn inline', onClick: () => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }) },
+          state.shortcut ? 'Change' : 'Set shortcut',
+        ),
+      ),
     h(
       'ul',
       null,
@@ -837,6 +855,13 @@ async function detectPage() {
 
 async function init() {
   if (isTab) document.body.classList.add('tab-mode');
+  chrome.commands
+    .getAll()
+    .then(commands => {
+      state.shortcut = commands.find(c => c.name === 'label-post')?.shortcut ?? '';
+      if (state.view === 'help') render();
+    })
+    .catch(() => {});
   const [data, page] = await Promise.all([store.load(), detectPage()]);
   state.data = data;
   state.page = page;

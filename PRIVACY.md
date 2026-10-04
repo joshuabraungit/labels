@@ -19,7 +19,7 @@ That's all. Labels does not store or read comments, the post author's name or pr
 
 ## When Labels reads page content
 
-- **Label buttons:** on www.linkedin.com, Labels adds a small Label button under posts. It reads a post's link and visible text **only when you click that post's Label button**, and only for that one post.
+- **Label buttons:** on www.linkedin.com, Labels adds a small Label button under posts. It reads a post's link and visible text **only when you click that post's Label button or press the Labels keyboard shortcut**, and only for that one post.
 - **Toolbar icon:** when you click the Labels icon while viewing a single LinkedIn post, Labels reads that page's link and the post's visible text so you can save it.
 - **Copy page info (optional, for troubleshooting):** if you click this link in the popup, Labels copies an outline of the page's layout to your clipboard. The outline contains tag and class names and text lengths only, with no post text, names or links. It goes only to your clipboard, and you decide whether to share it.
 

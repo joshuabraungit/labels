@@ -193,7 +193,7 @@
 
   // ---------- picker panel ----------
 
-  function openPanel(postId, container, anchor) {
+  function openPanel(postId, container, anchor, { viaKeyboard = false } = {}) {
     closePanel();
     const host = h('div', { 'data-labels-ui': 'panel' });
     const root = host.attachShadow({ mode: 'open' });
@@ -204,17 +204,29 @@
     for (const type of ['keydown', 'keyup', 'keypress']) {
       box.addEventListener(type, e => {
         if (type === 'keydown' && e.key === 'Escape') closePanel();
+        // Enter on a label checkbox saves, so the picker works from the keyboard alone.
+        if (type === 'keydown' && e.key === 'Enter' && e.target.type === 'checkbox' && panel && !panel.saving) {
+          e.preventDefault();
+          save();
+        }
         e.stopPropagation();
       });
     }
     document.body.append(host);
 
     const text = labelsPostText(container).text;
+    // Outline the post being labeled, so it's always clear which one it is.
+    const outline = { outline: container.style.outline, outlineOffset: container.style.outlineOffset };
+    Object.assign(container.style, { outline: '2px solid #6d4fc2', outlineOffset: '2px' });
     panel = {
       postId,
       host,
       box,
       anchor,
+      container,
+      outline,
+      viaKeyboard,
+      focusKey: viaKeyboard ? 'close' : null,
       text,
       loading: true,
       labels: [],
@@ -234,6 +246,7 @@
         panel.labels = state.labels;
         panel.post = state.post;
         panel.selection = new Set(state.post?.labelIds ?? []);
+        if (panel.viaKeyboard) panel.focusKey = state.labels.length ? `cb-${state.labels[0].id}` : 'new-label';
         renderPanel();
       })
       .catch(err => {
@@ -246,10 +259,11 @@
 
   function closePanel() {
     if (!panel) return;
-    const anchor = panel.anchor;
+    const { anchor, container, outline } = panel;
     panel.host.remove();
     panel = null;
-    if (anchor?.isConnected) anchor.focus({ preventScroll: true });
+    Object.assign(container.style, outline);
+    if (anchor?.isConnected && anchor.matches?.('button')) anchor.focus({ preventScroll: true });
   }
 
   function positionPanel() {
@@ -268,8 +282,7 @@
   function renderPanel() {
     const p = panel;
     if (!p) return;
-    const focusNewLabel =
-      p.box.contains(p.box.getRootNode().activeElement) && p.box.getRootNode().activeElement?.type === 'text';
+    const focusedKey = p.box.getRootNode().activeElement?.dataset?.focus;
     const scroll = p.box.querySelector('.list')?.scrollTop ?? 0;
     const existing = p.post;
     const excerpt = shortPreview(p.text) || existing?.excerpt || '';
@@ -280,7 +293,11 @@
         { class: 'head' },
         h('span', { class: 'icon' }),
         h('h2', null, 'Save to Labels'),
-        h('button', { class: 'close', type: 'button', 'aria-label': 'Close', onClick: closePanel }, '×'),
+        h(
+          'button',
+          { class: 'close', type: 'button', 'aria-label': 'Close', 'data-focus': 'close', onClick: closePanel },
+          '×',
+        ),
       ),
       h('p', { class: `preview${excerpt ? '' : ' fallback'}` }, h('span', null, excerpt || FALLBACK_PREVIEW)),
       existing && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
@@ -290,11 +307,11 @@
     p.box.querySelector('.icon').innerHTML = TAG_ICON;
     const list = p.box.querySelector('.list');
     if (list) list.scrollTop = scroll;
-    if (p.newLabel.open && (p.newLabel.focus || focusNewLabel)) {
-      const input = p.box.querySelector('input[type=text]');
-      input?.focus();
-      p.newLabel.focus = false;
-    }
+    if (p.newLabel.focus) p.focusKey = 'new-label-input';
+    p.newLabel.focus = false;
+    const key = p.focusKey || focusedKey;
+    p.focusKey = null;
+    if (key) p.box.querySelector(`[data-focus="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
     positionPanel();
   }
 
@@ -319,6 +336,7 @@
                   h('input', {
                     type: 'checkbox',
                     checked: p.selection.has(label.id),
+                    'data-focus': `cb-${label.id}`,
                     onChange: e => {
                       if (e.target.checked) p.selection.add(label.id);
                       else p.selection.delete(label.id);
@@ -336,7 +354,7 @@
       p.error && h('div', { class: 'error', role: 'alert' }, p.error),
       h(
         'button',
-        { class: 'btn primary block', type: 'button', disabled: p.saving, onClick: save },
+        { class: 'btn primary block', type: 'button', disabled: p.saving, 'data-focus': 'save', onClick: save },
         existing ? 'Update' : 'Save',
       ),
       h('div', { class: 'status', role: 'status' }, p.status),
@@ -352,6 +370,7 @@
         {
           class: 'link-btn',
           type: 'button',
+          'data-focus': 'new-label',
           onClick: () => {
             p.newLabel = { open: true, value: '', error: '', focus: true };
             renderPanel();
@@ -367,6 +386,7 @@
         p.labels = state.labels;
         p.selection.add(state.created.id);
         p.newLabel = { open: false, value: '', error: '' };
+        p.focusKey = `cb-${state.created.id}`;
         p.status = '';
       } catch (err) {
         nl.error = err.message;
@@ -391,6 +411,7 @@
           placeholder: 'Label name',
           'aria-label': 'New label name',
           maxlength: '80',
+          'data-focus': 'new-label-input',
           onInput: e => (nl.value = e.target.value),
         }),
         h('button', { class: 'btn primary', type: 'submit' }, 'Create'),
@@ -401,6 +422,7 @@
 
   async function save() {
     const p = panel;
+    const returnFocus = p.box.getRootNode().activeElement?.dataset?.focus || 'save';
     p.saving = true;
     p.error = '';
     p.status = '';
@@ -418,7 +440,69 @@
       p.error = err.message;
     }
     p.saving = false;
+    p.focusKey = returnFocus;
     renderPanel();
+  }
+
+  // ---------- keyboard shortcut ----------
+
+  // The post the shortcut means: the one under the mouse, otherwise the one filling the
+  // most of the screen. It gets outlined while the picker is open, so the choice is visible.
+  function postForShortcut() {
+    scan();
+    const entries = [...buttons].filter(([, e]) => e.host.isConnected && e.container.isConnected);
+    const hovered = [...document.querySelectorAll(':hover')].pop();
+    if (hovered) {
+      const match = entries.find(([, e]) => e.container.contains(hovered));
+      if (match) return match;
+    }
+    let best = null;
+    let bestVisible = 0;
+    for (const entry of entries) {
+      const r = entry[1].container.getBoundingClientRect();
+      const visible = Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0);
+      if (visible > bestVisible) {
+        best = entry;
+        bestVisible = visible;
+      }
+    }
+    return best;
+  }
+
+  function handleShortcut() {
+    if (panel) {
+      closePanel();
+      return;
+    }
+    const found = postForShortcut();
+    if (!found) {
+      toast('No post to label here. Scroll to a post, or point at one, and try again.');
+      return;
+    }
+    const [id, entry] = found;
+    const r = entry.button.getBoundingClientRect();
+    const buttonInView = r.top >= 0 && r.bottom <= window.innerHeight;
+    openPanel(id, entry.container, buttonInView ? entry.button : entry.container, { viaKeyboard: true });
+  }
+
+  let toastTimer = 0;
+  function toast(message) {
+    document.querySelector('[data-labels-ui="toast"]')?.remove();
+    const host = h('div', { 'data-labels-ui': 'toast' });
+    const root = host.attachShadow({ mode: 'open' });
+    root.append(
+      h(
+        'style',
+        null,
+        `${BASE_CSS} .toast { position: fixed; z-index: 2147483000; left: 50%; bottom: 24px; transform: translateX(-50%);
+          background: #1c1b22; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 14px;
+          box-shadow: 0 8px 24px rgba(20, 20, 40, 0.25); max-width: calc(100vw - 32px); }`,
+      ),
+      h('div', { class: 'toast', role: 'status' }, message),
+    );
+    document.body.append(host);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => host.remove(), 3500);
   }
 
   // ---------- wiring ----------
@@ -460,6 +544,13 @@
       // Extension reloaded; buttons keep their last state.
     }
   }
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type !== 'labels-shortcut' || sender.id !== chrome.runtime.id) return false;
+    handleShortcut();
+    sendResponse({ handled: true });
+    return false;
+  });
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local') refreshSaved();
