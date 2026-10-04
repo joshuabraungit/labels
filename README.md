@@ -2,7 +2,9 @@
 
 A small Chrome extension (Manifest V3) for saving LinkedIn posts with your own labels and finding them later.
 
-**Save:** open a LinkedIn post on its own page → click the Labels toolbar icon → pick labels → Save.
+**Save from the feed:** click the purple **Label** button under any post → pick labels → Save.
+
+**Or from a post page:** open a LinkedIn post on its own page → click the Labels toolbar icon → pick labels → Save.
 
 **Find:** click Labels → Your labels → click a label → click a preview to open the original post.
 
@@ -10,7 +12,7 @@ Labels uses its own save action. It doesn't touch LinkedIn's Save button or Save
 
 ## Install (unpacked)
 
-1. Download `release/labels-extension-1.0.1.zip` and unzip it. You should get a folder with `manifest.json` at the top.
+1. Download `release/labels-extension-1.1.0.zip` and unzip it. You should get a folder with `manifest.json` at the top.
 2. In Chrome, go to `chrome://extensions`.
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and pick the unzipped folder.
@@ -20,11 +22,13 @@ To update, unzip the new version over the same folder and click the reload icon 
 
 ## How it works
 
-- **Which post gets saved.** The popup only offers saving on an individual post page:
+- **Which post gets saved.** Labels adds a small **Label** button after the reactions bar (Like · Comment · Repost · Send) of each post on linkedin.com. A post only gets a button when its LinkedIn post ID (for example `urn:li:activity:…`) can be found in the page, in an attribute or a link such as the timestamp. Posts without one (some ads, for example) get no button, so a click always saves the post the button sits on. Reshared posts get one button, for the outer post.
+
+  The toolbar popup also saves on an individual post page:
   - `linkedin.com/feed/update/urn:li:activity:…` (also `share:` and `ugcPost:`)
   - `linkedin.com/posts/<name>_<words>-activity-…`
 
-  On the feed, a profile, search or any other page it shows _"Open the LinkedIn post you want to save, then click Labels."_ It never guesses which feed post you meant. To get to a post's own page, click its timestamp, or use **… → Copy link to post** and open that link.
+  On other pages it shows _"Click the Label button on any post to save it. Or open a post and click Labels here."_ It never guesses which post you meant.
 
 - **Stable ID and link.** The post's URN (for example `urn:li:activity:7212345678901234567`) is the record ID, so saving the same post again updates it instead of creating a duplicate. Query strings and fragments (`utm_source`, `rcm`, `#comments`, …) are stripped from the stored link.
 - **Excerpt.** When you click the toolbar button, a one-off script reads the visible text of that one post: no comments, author info, images or other posts. Line breaks become spaces and the excerpt stops at a word boundary within 160 characters, with `…` if it was cut. It tries LinkedIn's known post-text elements first, then the page's own description of that post, then a layout-based search between the post header and its reactions bar, and finally the tab title (with the author's name removed). If nothing is found (image-only posts, a LinkedIn layout it doesn't recognize), you can still save: the preview reads **Open saved post · saved <date>**, and it fills in automatically the next time you open that post and click Labels. The Save view also offers **Copy page info**, a text-free outline of the page layout (no post text or names) that can be shared to adjust the reader.
@@ -43,23 +47,27 @@ To update, unzip the new version over the same folder and click the reload icon 
 
 ### Permissions
 
-| Permission  | Why                                                                                       |
-| ----------- | ----------------------------------------------------------------------------------------- |
-| `storage`   | Keep your labels and saved posts locally.                                                 |
-| `activeTab` | Read the current tab's URL and text, only after you click the Labels button.              |
-| `scripting` | Run the one-off excerpt reader in that tab (only possible while `activeTab` is granted). |
+Chrome shows **"Read and change your data on www.linkedin.com"** at install, because of the Label buttons.
 
-No host permissions, no history, no cookies, no content scripts. Nothing is injected into LinkedIn pages unless you click the button, and Labels doesn't automate LinkedIn or crawl posts.
+| Permission / access          | Why                                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
+| `storage`                    | Keep your labels and saved posts locally.                                            |
+| Content script on `www.linkedin.com` | Add the Label button to posts and show the label picker. Nothing runs on other sites. |
+| `activeTab` + `scripting`    | Let the toolbar popup read the current post when you click it.                       |
 
-Labels is an independent tool. It isn't affiliated with or endorsed by LinkedIn, and reading a post's visible text when you click the button isn't something LinkedIn has approved.
+No history, no cookies, no other sites. The content script only adds the Label buttons. It reads a post's text only when you click Label (or the toolbar button), and it doesn't click, fetch, scroll or automate anything on LinkedIn.
+
+Labels is an independent tool. It isn't affiliated with or endorsed by LinkedIn, and adding buttons to LinkedIn pages or reading a post's visible text isn't something LinkedIn has approved. If LinkedIn changes its page layout, the buttons may stop appearing until Labels is updated. The toolbar popup still works on post pages, and **Copy page info** (in the popup on any LinkedIn page) gives a text-free outline of the page to help fix it.
 
 ## Files
 
 ```
 manifest.json      MV3 manifest
+background.js      Storage requests from the Label buttons
+content.js         Label buttons and picker on linkedin.com
 popup.html/.css/.js  Toolbar popup (Save this post, Your labels, label screen, Help)
 lib/post.js        Post URL detection, URL normalization, excerpt rules
-lib/capture.js     Function injected on click to read the post's visible text
+lib/capture.js     Finds posts and their IDs, reads a post's visible text (used by both)
 lib/store.js       Storage, labels, Uncategorized, backup export/import
 icons/             Toolbar icons
 scripts/           build-zip.sh, make-icons.mjs
@@ -82,7 +90,7 @@ The end-to-end test loads the extension in Chromium and serves LinkedIn-shaped f
 
 The automated tests use fixture pages, so do one pass on real LinkedIn after installing:
 
-1. Open your feed and click Labels: it should open on Your labels, and Save this post should show the "Open the LinkedIn post…" message.
+1. Open your feed: posts should have a purple **Label** button after Like · Comment · Repost · Send. Click one, create a label and Save: the button turns into **Labeled** and the post shows up under that label in the popup.
 2. Click a post's timestamp to open it on its own page, click Labels: the preview should match that post's first lines (not a comment).
 3. Create two labels, save, then reopen the popup: it should say Update with both labels checked.
 4. Open the label and click the preview: the same post should open in a new tab.

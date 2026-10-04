@@ -6,6 +6,6 @@ version=$(node -p "require('./manifest.json').version")
 out="release/labels-extension-${version}.zip"
 mkdir -p release
 rm -f "$out"
-zip -qr -X "$out" manifest.json popup.html popup.css popup.js lib icons
+zip -qr -X "$out" manifest.json background.js content.js popup.html popup.css popup.js lib icons
 echo "Wrote $out"
 unzip -l "$out"

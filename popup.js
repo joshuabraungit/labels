@@ -1,5 +1,4 @@
 import { classifyUrl, makeExcerpt } from './lib/post.js';
-import { capturePostText } from './lib/capture.js';
 import {
   createStore,
   emptyData,
@@ -19,6 +18,18 @@ const app = document.getElementById('app');
 const importInput = document.getElementById('import-file');
 
 const NO_POST_MESSAGE = 'Open the LinkedIn post you want to save, then click Labels.';
+const FEED_MESSAGE = 'Click the Label button on any post to save it. Or open a post and click Labels here.';
+
+// Runs lib/capture.js in the tab, then capturePostText(postId, mode) from it.
+async function runCapture(tabId, postId, mode) {
+  await chrome.scripting.executeScript({ target: { tabId }, files: ['lib/capture.js'] });
+  const [injection] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (id, how) => capturePostText(id, how),
+    args: [postId, mode],
+  });
+  return injection?.result;
+}
 const FALLBACK_PREVIEW = 'Open saved post';
 
 const state = {
@@ -273,7 +284,9 @@ function renderSave() {
     return h(
       'div',
       null,
-      h('div', { class: 'notice' }, NO_POST_MESSAGE),
+      h('div', { class: 'notice' }, page.kind === 'linkedin-other' ? FEED_MESSAGE : NO_POST_MESSAGE),
+      page.kind === 'linkedin-other' &&
+        h('p', { class: 'meta' }, 'Don\u2019t see Label buttons on posts? ', renderCopyPageInfo()),
       h('button', { class: 'link-btn', onClick: () => go('labels') }, 'Go to Your labels'),
     );
   }
@@ -308,14 +321,14 @@ function renderSave() {
 // Shown when no preview text was found. Copies a text-free outline of the page so the
 // reader can be adjusted to LinkedIn's current layout.
 function renderPreviewHelp() {
+  return h('p', { class: 'meta' }, 'No preview found. You can still save. ', renderCopyPageInfo());
+}
+
+function renderCopyPageInfo() {
   const copy = async () => {
     try {
-      const [injection] = await chrome.scripting.executeScript({
-        target: { tabId: state.page.tabId },
-        func: capturePostText,
-        args: [state.page.id, 'diagnose'],
-      });
-      await navigator.clipboard.writeText(injection?.result?.diagnosis || 'no diagnosis');
+      const result = await runCapture(state.page.tabId, state.page.id ?? null, 'diagnose');
+      await navigator.clipboard.writeText(result?.diagnosis || 'no diagnosis');
       state.diagStatus = 'Copied. It shows the page layout only, no post text or names.';
     } catch (err) {
       console.warn('Labels: could not copy page info', err);
@@ -324,9 +337,8 @@ function renderPreviewHelp() {
     render();
   };
   return h(
-    'p',
-    { class: 'meta' },
-    'No preview found. You can still save. ',
+    'span',
+    null,
     h('button', { class: 'link-btn inline', onClick: copy }, 'Copy page info'),
     state.diagStatus && h('span', { class: 'diag' }, ` ${state.diagStatus}`),
   );
@@ -518,7 +530,7 @@ function renderHelp() {
     h(
       'p',
       null,
-      'To save a post, open it on its own page (click the post’s timestamp), then click the Labels toolbar button.',
+      'To save a post, click the Label button under it in your LinkedIn feed. Or open the post on its own page and click the Labels toolbar button.',
     ),
     h(
       'ul',
@@ -545,7 +557,7 @@ function renderHelp() {
     h(
       'p',
       { class: 'fine-print' },
-      'Labels is an independent tool and isn’t affiliated with or endorsed by LinkedIn. It reads a post’s visible text only when you click the Labels button.',
+      'Labels is an independent tool and isn’t affiliated with or endorsed by LinkedIn. It adds a Label button to posts on linkedin.com and reads a post’s visible text only when you click Label or the toolbar button.',
     ),
   );
 }
@@ -808,17 +820,14 @@ async function detectPage() {
     console.warn('Labels: could not read the active tab', err);
   }
   const page = classifyUrl(tab?.url ?? '');
+  if (page.kind === 'linkedin-other') return { ...page, tabId: tab.id };
   if (page.kind !== 'post') return page;
 
   let text = '';
   try {
-    const [injection] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: capturePostText,
-      args: [page.id, 'capture'],
-    });
-    text = injection?.result?.text ?? '';
-    console.info('Labels: preview source', injection?.result?.source);
+    const result = await runCapture(tab.id, page.id, 'capture');
+    text = result?.text ?? '';
+    console.info('Labels: preview source', result?.source);
   } catch (err) {
     // Saving still works with the "Open saved post" preview.
     console.warn('Labels: could not read the post text', err);

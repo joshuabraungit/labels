@@ -31,9 +31,7 @@ cpSync(root, extDir, {
 });
 const manifest = JSON.parse(readFileSync(join(extDir, 'manifest.json'), 'utf8'));
 manifest.host_permissions = ['https://www.linkedin.com/*'];
-manifest.background = { service_worker: 'sw.js' };
 writeFileSync(join(extDir, 'manifest.json'), JSON.stringify(manifest));
-writeFileSync(join(extDir, 'sw.js'), '');
 writeFileSync(
   join(extDir, 'test-shim.js'),
   `const target = new URLSearchParams(location.search).get('target');
@@ -51,6 +49,7 @@ writeFileSync(
 const POST_A = 'https://www.linkedin.com/feed/update/urn:li:activity:7212345678901234567/';
 const POST_B = 'https://www.linkedin.com/posts/jane-doe_launch-activity-7200000000000000001-AbCd/';
 const FEED = 'https://www.linkedin.com/feed/';
+const FEED2 = 'https://www.linkedin.com/feed/following/';
 const POST_C = 'https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/';
 const POST_D = 'https://www.linkedin.com/feed/update/urn:li:activity:7444444444444444444/';
 const POST_E = 'https://www.linkedin.com/feed/update/urn:li:activity:7555555555555555555/';
@@ -77,7 +76,8 @@ async function launch() {
       body = postEHasText
         ? read('post-new-markup.html').replaceAll('7333333333333333333', '7555555555555555555')
         : read('post-no-text.html');
-    } else body = read('feed.html');
+    } else if (url.startsWith(FEED2)) body = read('feed-new-markup.html');
+    else body = read('feed.html');
     return route.fulfill({ contentType: 'text/html', body });
   });
   let [sw] = context.serviceWorkers();
@@ -158,7 +158,7 @@ try {
     await p.getByRole('tab', { name: 'Save this post' }).click();
     assert.equal(
       await p.locator('.notice').textContent(),
-      'Open the LinkedIn post you want to save, then click Labels.',
+      'Click the Label button on any post to save it. Or open a post and click Labels here.',
     );
     assert.equal(await p.getByRole('button', { name: /^(Save|Update)$/ }).count(), 0);
     await shot(p, '1-feed-page');
@@ -459,6 +459,137 @@ try {
     assert.ok((await p.locator('.post-open').first().textContent()).startsWith('Contrary to seemingly'));
     await p.close();
     await tab.close();
+  });
+
+  // ---------- Label buttons in the feed ----------
+
+  const feedButton = (page, id) => page.locator(`[data-labels-post="${id}"] button`);
+  const panel = page => page.locator('[data-labels-ui="panel"] .panel');
+  const ID1 = 'urn:li:activity:7600000000000000001';
+  const ID2 = 'urn:li:activity:7600000000000000002';
+  const ID3 = 'urn:li:activity:7600000000000000003';
+
+  let feed;
+  await check('feed: Label buttons only on posts with a post ID, one per post', async () => {
+    feed = await context.newPage();
+    await feed.setViewportSize({ width: 1100, height: 900 });
+    await feed.goto(FEED2);
+    await feedButton(feed, ID3).waitFor();
+    const ids = await feed.locator('[data-labels-ui="button"]').evaluateAll(els => els.map(e => e.dataset.labelsPost));
+    assert.deepEqual(ids.sort(), [ID1, ID2, ID3]);
+    // Placed right after the reactions bar of its own post.
+    assert.equal(
+      await feed
+        .locator('[data-labels-post]')
+        .first()
+        .evaluate(el => el.previousElementSibling?.className),
+      'bar',
+    );
+    assert.equal(await feedButton(feed, ID1).textContent(), 'Label');
+    await shot(feed, '10-feed-buttons');
+  });
+
+  await check('feed: picker captures the right post, creates labels, saves', async () => {
+    await feedButton(feed, ID1).click();
+    await panel(feed).waitFor();
+    const preview = await panel(feed).locator('.preview').textContent();
+    assert.equal(preview, 'Feed post one: the best sales emails are short, specific, and about the buyer, not you.');
+    assert.ok(!(await panel(feed).textContent()).includes('null'), 'no stray "null" in the picker');
+    await panel(feed).getByRole('button', { name: '+ New label' }).click();
+    await panel(feed).getByLabel('New label name').fill('Feed picks');
+    await panel(feed).getByRole('button', { name: 'Create' }).click();
+    await panel(feed).locator('label', { hasText: 'Feed picks' }).waitFor();
+    assert.equal(await panel(feed).locator('label', { hasText: 'Feed picks' }).locator('input').isChecked(), true);
+    await shot(feed, '11-feed-picker');
+    await panel(feed).getByRole('button', { name: 'Save', exact: true }).click();
+    await panel(feed).getByText('Saved \u2713').waitFor();
+    await feedButton(feed, ID1).getByText('Labeled').waitFor();
+    const p = await openPopup(context, extId, FEED);
+    const stored = await storedData(p);
+    const post = stored.posts[ID1];
+    assert.equal(post.url, `https://www.linkedin.com/feed/update/${ID1}/`);
+    assert.equal(
+      post.excerpt,
+      'Feed post one: the best sales emails are short, specific, and about the buyer, not you.',
+    );
+    assert.deepEqual(
+      post.labelIds.map(id => stored.labels[id].name),
+      ['Feed picks'],
+    );
+    await p.close();
+  });
+
+  await check('feed: Escape and outside clicks close the picker; reopening shows Update', async () => {
+    await feed.keyboard.press('Escape');
+    await panel(feed).waitFor({ state: 'detached' });
+    await feedButton(feed, ID1).click();
+    await panel(feed).getByRole('button', { name: 'Update' }).waitFor();
+    assert.equal(await panel(feed).locator('label', { hasText: 'Feed picks' }).locator('input').isChecked(), true);
+    await feed.mouse.click(5, 880);
+    await panel(feed).waitFor({ state: 'detached' });
+  });
+
+  await check('feed: post found only by its timestamp link saves to Uncategorized; no duplicates', async () => {
+    await feedButton(feed, ID2).click();
+    assert.equal(
+      await panel(feed).locator('.preview').textContent(),
+      'Feed post two is identified only by its timestamp link, nothing else at all.',
+    );
+    await panel(feed).getByRole('button', { name: 'Save', exact: true }).click();
+    await panel(feed).getByText('Saved \u2713').waitFor();
+    await panel(feed).getByRole('button', { name: 'Update' }).click();
+    await panel(feed).getByText('Saved \u2713').waitFor();
+    await feed.keyboard.press('Escape');
+    const p = await openPopup(context, extId, FEED);
+    const stored = await storedData(p);
+    assert.equal(Object.keys(stored.posts).filter(id => id === ID2).length, 1);
+    assert.deepEqual(stored.posts[ID2].labelIds, []);
+    await p.locator('.label-row', { hasText: 'Uncategorized' }).click();
+    assert.ok(
+      (await p.locator('.post-open').allTextContents()).includes(
+        'Feed post two is identified only by its timestamp link, nothing else at all.',
+      ),
+    );
+    await p.close();
+  });
+
+  await check('feed: posts loaded later (scrolling) get buttons too', async () => {
+    await feed.evaluate(() => {
+      const post = document.createElement('div');
+      post.className = 'p0st';
+      post.setAttribute('data-urn', 'urn:li:activity:7600000000000000009');
+      post.innerHTML =
+        '<div class="hd"><span>1h</span></div><div class="bd"><span>A post that arrived while scrolling down the feed.</span></div>' +
+        '<div class="bar"><button aria-label="Like">Like</button><button aria-label="Comment">Comment</button><button aria-label="Send">Send</button></div>';
+      document.getElementById('feed-list').append(post);
+    });
+    await feedButton(feed, 'urn:li:activity:7600000000000000009').waitFor();
+  });
+
+  await check('feed: buttons update when a post is removed in the popup', async () => {
+    const p = await openPopup(context, extId, FEED);
+    await p.locator('.label-row', { hasText: 'Feed picks' }).click();
+    await p.getByRole('button', { name: 'Saved post options' }).click();
+    await p.getByRole('menuitem', { name: 'Remove saved post' }).click();
+    await p.getByRole('button', { name: 'Remove', exact: true }).click();
+    await p.close();
+    await feedButton(feed, ID1).getByText('Label', { exact: true }).waitFor();
+  });
+
+  await check('feed: popup on the feed points to the buttons and can copy page info', async () => {
+    const p = await openPopup(context, extId, FEED2);
+    await p.getByRole('tab', { name: 'Save this post' }).click();
+    assert.match(await p.locator('.notice').textContent(), /Label button on any post/);
+    await p.evaluate(() => {
+      navigator.clipboard.writeText = async text => (window.copiedText = text);
+    });
+    await p.getByRole('button', { name: 'Copy page info' }).click();
+    await p.getByText('Copied.', { exact: false }).waitFor();
+    const outline = await p.evaluate(() => window.copiedText);
+    assert.match(outline, /posts-with-id-found: 4/);
+    assert.ok(!/Feed post|Alice|Struggling/.test(outline), 'outline has no page text');
+    await p.close();
+    await feed.close();
   });
 
   console.log(`\nAll ${step} end-to-end checks passed.`);
