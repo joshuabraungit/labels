@@ -575,7 +575,7 @@ function renderHelp() {
     h(
       'p',
       { class: 'fine-print' },
-      'Labels is an independent tool and isn’t affiliated with or endorsed by LinkedIn. It adds a Label button to posts on linkedin.com and reads a post’s visible text only when you click Label or the toolbar button.',
+      'Labels is an independent tool and isn’t affiliated with or endorsed by LinkedIn. It adds a Label button to posts on linkedin.com and reads a post’s visible text only when you click Label, press the shortcut or click the toolbar button.',
     ),
   );
 }
@@ -765,7 +765,8 @@ function onExport() {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
   state.helpError = '';
-  state.helpMessage = `Exported ${Object.keys(state.data.posts).length} saved posts.`;
+  const count = Object.keys(state.data.posts).length;
+  state.helpMessage = `Exported ${count} saved post${count === 1 ? '' : 's'}.`;
   render();
 }
 
