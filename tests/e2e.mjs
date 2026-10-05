@@ -51,6 +51,7 @@ const POST_B = 'https://www.linkedin.com/posts/jane-doe_launch-activity-72000000
 const FEED = 'https://www.linkedin.com/feed/';
 const FEED2 = 'https://www.linkedin.com/feed/following/';
 const FEED3 = 'https://www.linkedin.com/feed/hashtag/sdui/';
+const SAVED = 'https://www.linkedin.com/my-items/saved-posts/';
 const POST_C = 'https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/';
 const POST_D = 'https://www.linkedin.com/feed/update/urn:li:activity:7444444444444444444/';
 const POST_E = 'https://www.linkedin.com/feed/update/urn:li:activity:7555555555555555555/';
@@ -79,6 +80,7 @@ async function launch() {
         : read('post-no-text.html');
     } else if (url.startsWith(FEED2)) body = read('feed-new-markup.html');
     else if (url.startsWith(FEED3)) body = read('feed-sdui.html');
+    else if (url.startsWith(SAVED)) body = read('saved-posts.html');
     else body = read('feed.html');
     return route.fulfill({ contentType: 'text/html', body });
   });
@@ -664,6 +666,32 @@ try {
     assert.equal(stored.posts[S1].url, `https://www.linkedin.com/feed/update/${S1}/`);
     await p.close();
     await sdui.close();
+  });
+
+  await check("LinkedIn's Saved posts page: button sits in each post's top row", async () => {
+    const saved = await context.newPage();
+    await saved.setViewportSize({ width: 1100, height: 900 });
+    await saved.goto(SAVED);
+    const P1 = 'urn:li:activity:7340000000000000001';
+    const P2 = 'urn:li:activity:7340000000000000002';
+    await feedButton(saved, P2).waitFor();
+    for (const id of [P1, P2]) {
+      const where = await saved.locator(`[data-labels-post="${id}"]`).evaluate(host => ({
+        row: host.parentElement.className,
+        next: host.nextElementSibling?.querySelector('.entity-result__actions-overflow-menu-dropdown') !== null,
+        inItem: host.closest('[data-chameleon-result-urn]')?.getAttribute('data-chameleon-result-urn'),
+      }));
+      assert.equal(where.row, 'display-flex mb3 ml4', 'in the top row');
+      assert.equal(where.next, true, 'right before the ••• menu');
+      assert.equal(where.inItem, id, "inside that post's own card");
+    }
+    await feedButton(saved, P1).click();
+    assert.equal(
+      await panel(saved).locator('.preview').textContent(),
+      'Saved post one: I collect cold email subject lines I wish I wrote. Here are 7 from people who study outbound.',
+    );
+    await saved.keyboard.press('Escape');
+    await saved.close();
   });
 
   // ---------- keyboard shortcut ----------

@@ -6,6 +6,8 @@ A small Chrome extension (Manifest V3) for saving LinkedIn posts with your own l
 
 In the picker, labels that already have posts show a count like `3 ›`. Click it to open that label's posts in a new tab. Clicking the label name still just ticks the box.
 
+**Posts you saved with LinkedIn's own Save button:** open LinkedIn's Saved posts page (`linkedin.com/my-items/saved-posts/`). Each post there gets a Label button next to its ••• menu, so you can work through your existing saves and label them one at a time. Labels doesn't import them automatically and doesn't change LinkedIn's saved list.
+
 **Or from the keyboard:** press **Alt+Shift+L** (⌥⇧L on Mac) to open the picker for the post under your mouse, or the one filling most of the screen. That post is outlined in purple while the picker is open. Tab through labels, Space to tick, Enter to save, Esc to close. Change the shortcut at `chrome://extensions/shortcuts`. Off LinkedIn, the shortcut opens the Labels popup.
 
 **Or from a post page:** open a LinkedIn post on its own page → click the Labels toolbar icon → pick labels → Save.
@@ -16,7 +18,7 @@ Labels uses its own save action. It doesn't touch LinkedIn's Save button or Save
 
 ## Install (unpacked)
 
-1. Download `release/labels-extension-1.2.1.zip` and unzip it. You should get a folder with `manifest.json` at the top.
+1. Download `release/labels-extension-1.2.2.zip` and unzip it. You should get a folder with `manifest.json` at the top.
 2. In Chrome, go to `chrome://extensions`.
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and pick the unzipped folder.
