@@ -1,7 +1,7 @@
 // Handles storage for the feed buttons (content.js), so labels and saved posts are read
 // and written by the same code the toolbar popup uses.
 import { classifyUrl, makeExcerpt } from './lib/post.js';
-import { createStore, LabelsError, labelsWithCounts, UNCATEGORIZED_ID } from './lib/store.js';
+import { createStore, LabelsError, labelsWithCounts, postsForLabel, UNCATEGORIZED_ID } from './lib/store.js';
 
 const store = createStore(chrome.storage.local);
 
@@ -16,11 +16,12 @@ function view(data, postId) {
 }
 
 const handlers = {
-  // Opens a label's saved posts in a full-page tab (the popup's label screen).
-  async openLabel({ labelId }) {
-    const url = chrome.runtime.getURL(`popup.html?mode=tab&label=${encodeURIComponent(labelId)}`);
-    await chrome.tabs.create({ url });
-    return {};
+  // A label's saved posts, newest first, for the list inside the picker.
+  async labelPosts({ labelId }) {
+    const data = await store.load();
+    return {
+      posts: postsForLabel(data, labelId).map(p => ({ id: p.id, url: p.url, excerpt: p.excerpt, savedAt: p.savedAt })),
+    };
   },
 
   async getState({ postId }) {

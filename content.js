@@ -89,6 +89,21 @@
       color: #5c40ab; font-size: 14px; font-weight: 500; text-align: left; }
     .create-btn .plus { width: 16px; text-align: center; font-weight: 700; }
     .panel { transition: opacity 0.18s ease; }
+    .back { border: 0; background: transparent; color: #6b6a75; font-size: 22px; line-height: 1; padding: 0 8px 2px 2px;
+      margin-left: -4px; border-radius: 6px; }
+    .back:hover { background: #f6f5f9; color: #1c1b22; }
+    .label-view .head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .posts { list-style: none; margin: 4px -16px 0; padding: 0; overflow-y: auto;
+      max-height: clamp(200px, calc(100vh - 200px), 460px); border-top: 1px solid #ececf0; }
+    .posts li + li { border-top: 1px solid #ececf0; }
+    .posts a { display: block; padding: 11px 16px; color: #1c1b22; text-decoration: none; line-height: 1.5; }
+    .posts a:hover { background: #f6f5f9; }
+    .posts a:hover .excerpt { color: #5c40ab; }
+    .posts .excerpt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      overflow-wrap: anywhere; }
+    .posts .excerpt.fallback { color: #6b6a75; font-style: italic; }
+    .this-post { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 999px; background: #f2eefb;
+      color: #5c40ab; font-size: 11px; font-weight: 600; }
     .panel.fading { opacity: 0; }
     .confirm {
       display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 9px 12px;
@@ -247,8 +262,8 @@
     // Keep LinkedIn's keyboard shortcuts from firing while typing in the picker.
     for (const type of ['keydown', 'keyup', 'keypress']) {
       box.addEventListener(type, e => {
-        if (type === 'keydown' && e.key === 'Escape') closePanel();
-        else if (type === 'keydown') holdOpen();
+        // Esc is handled once, by the page-level listener (it runs first, in the capture phase).
+        if (type === 'keydown' && e.key !== 'Escape') holdOpen();
         // Enter on a label checkbox saves, so the picker works from the keyboard alone.
         if (type === 'keydown' && e.key === 'Enter' && e.target.type === 'checkbox' && panel && !panel.saving) {
           e.preventDefault();
@@ -360,24 +375,27 @@
     const existing = p.post;
     const excerpt = shortPreview(p.text) || existing?.excerpt || '';
 
-    const parts = [
-      h(
-        'div',
-        { class: 'head' },
-        h('span', { class: 'icon' }),
-        h('h2', null, 'Save to Labels'),
-        h(
-          'button',
-          { class: 'close', type: 'button', 'aria-label': 'Close', 'data-focus': 'close', onClick: closePanel },
-          '×',
-        ),
-      ),
-      h('p', { class: `preview${excerpt ? '' : ' fallback'}` }, h('span', null, excerpt || FALLBACK_PREVIEW)),
-      p.wasSaved && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
-      p.loading ? h('div', { class: 'loading' }, 'Loading your labels…') : renderPickerBody(),
-    ];
+    const parts = p.viewLabel
+      ? [renderLabelView()]
+      : [
+          h(
+            'div',
+            { class: 'head' },
+            h('span', { class: 'icon' }),
+            h('h2', null, 'Save to Labels'),
+            h(
+              'button',
+              { class: 'close', type: 'button', 'aria-label': 'Close', 'data-focus': 'close', onClick: closePanel },
+              '×',
+            ),
+          ),
+          h('p', { class: `preview${excerpt ? '' : ' fallback'}` }, h('span', null, excerpt || FALLBACK_PREVIEW)),
+          p.wasSaved && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
+          p.loading ? h('div', { class: 'loading' }, 'Loading your labels…') : renderPickerBody(),
+        ];
     p.box.replaceChildren(...parts.filter(Boolean));
-    p.box.querySelector('.icon').innerHTML = TAG_ICON;
+    const icon = p.box.querySelector('.icon');
+    if (icon) icon.innerHTML = TAG_ICON;
     const list = p.box.querySelector('.list');
     if (list) list.scrollTop = scroll;
     const key = p.focusKey || focusedKey;
@@ -623,15 +641,92 @@
     renderPanel();
   }
 
+  // Esc steps back out of a label's post list; otherwise it closes the picker.
+  function escape() {
+    if (panel?.viewLabel) backToPicker();
+    else closePanel();
+  }
+
+  // Shows a label's saved posts inside the picker; Back returns to the picker as it was.
   async function openLabel(labelId) {
+    const p = panel;
+    const label = p.labels.find(l => l.id === labelId);
     try {
-      await send('openLabel', { labelId });
+      const { posts } = await send('labelPosts', { labelId });
+      if (panel !== p) return;
+      p.viewLabel = {
+        id: labelId,
+        name: label?.name ?? '',
+        posts,
+        scroll: p.box.querySelector('.list')?.scrollTop ?? 0,
+      };
+      p.focusKey = 'back';
     } catch (err) {
-      if (panel) {
-        panel.error = err.message;
-        renderPanel();
-      }
+      p.error = err.message;
     }
+    renderPanel();
+  }
+
+  function backToPicker() {
+    const p = panel;
+    const { id, scroll } = p.viewLabel;
+    p.viewLabel = null;
+    p.focusKey = `count-${id}`;
+    renderPanel();
+    const list = p.box.querySelector('.list');
+    if (list) list.scrollTop = scroll;
+  }
+
+  function savedOn(ms) {
+    const date = new Date(ms);
+    const sameYear = date.getFullYear() === new Date().getFullYear();
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      ...(sameYear ? {} : { year: 'numeric' }),
+    });
+  }
+
+  function renderLabelView() {
+    const p = panel;
+    const v = p.viewLabel;
+    return h(
+      'div',
+      { class: 'label-view' },
+      h(
+        'div',
+        { class: 'head' },
+        h(
+          'button',
+          { class: 'back', type: 'button', 'aria-label': 'Back', 'data-focus': 'back', onClick: backToPicker },
+          '\u2039',
+        ),
+        h('h2', { title: v.name }, v.name),
+        h('button', { class: 'close', type: 'button', 'aria-label': 'Close', onClick: closePanel }, '\u00D7'),
+      ),
+      v.posts.length
+        ? h(
+            'ul',
+            { class: 'posts' },
+            v.posts.map(post =>
+              h(
+                'li',
+                null,
+                h(
+                  'a',
+                  { href: post.url, target: '_blank', rel: 'noopener noreferrer', title: 'Open the original post' },
+                  h(
+                    'span',
+                    { class: `excerpt${post.excerpt ? '' : ' fallback'}` },
+                    post.excerpt || `${FALLBACK_PREVIEW} \u00B7 saved ${savedOn(post.savedAt)}`,
+                  ),
+                  post.id === p.postId && h('span', { class: 'this-post' }, 'This post'),
+                ),
+              ),
+            ),
+          )
+        : h('p', { class: 'hint' }, 'No saved posts with this label yet.'),
+    );
   }
 
   async function save() {
@@ -736,7 +831,7 @@
   document.addEventListener(
     'keydown',
     e => {
-      if (panel && e.key === 'Escape') closePanel();
+      if (panel && e.key === 'Escape') escape();
     },
     true,
   );

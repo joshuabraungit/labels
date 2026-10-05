@@ -535,7 +535,7 @@ try {
     await panel(feed).waitFor({ state: 'detached' });
   });
 
-  await check('feed: picker shows post counts that open the label in a tab', async () => {
+  await check("feed: picker shows post counts that list the label's posts in place", async () => {
     await feedButton(feed, ID1).click();
     const pill = panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count');
     await pill.waitFor();
@@ -547,20 +547,26 @@ try {
       'labels with posts get a pill',
     );
     const before = await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('input').isChecked();
-    const [tab] = await Promise.all([context.waitForEvent('page'), pill.click()]);
+    await pill.click();
+    // The label's posts show inside the picker, no new tab.
+    await panel(feed).locator('.label-view').waitFor();
+    assert.equal(await panel(feed).locator('.label-view h2').textContent(), 'Feed picks');
+    const rows = panel(feed).locator('.posts a');
+    assert.equal(await rows.count(), 1);
+    assert.ok((await rows.first().textContent()).startsWith('Feed post one'));
+    assert.equal(await rows.first().getAttribute('href'), `https://www.linkedin.com/feed/update/${ID1}/`);
+    assert.match(await rows.first().textContent(), /This post$/, 'marks the post being labeled');
+    // Esc (or Back) returns to the picker as it was, without ticking anything.
+    await feed.keyboard.press('Escape');
+    await panel(feed).locator('.label-view').waitFor({ state: 'detached' });
     assert.equal(
       await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('input').isChecked(),
       before,
       'clicking the count does not tick the box',
     );
-    await tab.locator('.header h2').waitFor();
-    assert.match(tab.url(), /popup\.html\?mode=tab&label=/);
-    assert.equal(await tab.locator('.header h2').textContent(), 'Feed picks');
-    assert.ok(
-      (await tab.locator('.post-open').allTextContents()).some(t => t.startsWith('Feed post one')),
-      'the label tab lists the saved post',
-    );
-    await tab.close();
+    await pill.click();
+    await panel(feed).getByRole('button', { name: 'Back' }).click();
+    await panel(feed).getByLabel('Find or create a label').waitFor();
     await feed.keyboard.press('Escape');
     await panel(feed).waitFor({ state: 'detached' });
   });
