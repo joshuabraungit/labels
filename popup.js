@@ -877,7 +877,11 @@ async function init() {
       }
     }
   }
-  if (isTab) state.view = location.hash === '#help' ? 'help' : 'labels';
+  const deepLabel = new URLSearchParams(location.search).get('label');
+  if (isTab && deepLabel && labelName(state.data, deepLabel)) {
+    state.view = 'label';
+    state.labelId = deepLabel;
+  } else if (isTab) state.view = location.hash === '#help' ? 'help' : 'labels';
   else state.view = page.kind === 'post' || page.kind === 'post-unidentified' ? 'save' : 'labels';
   render();
 }

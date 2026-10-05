@@ -32,7 +32,7 @@
 
   const PANEL_CSS = `${BASE_CSS}
     .panel {
-      position: fixed; z-index: 2147483000; width: 320px; max-width: calc(100vw - 16px);
+      position: fixed; z-index: 2147483000; width: 360px; max-width: calc(100vw - 16px);
       background: #fff; color: #1c1b22; border: 1px solid #ececf0; border-radius: 12px;
       box-shadow: 0 12px 32px rgba(20, 20, 40, 0.18); font-size: 14px; line-height: 1.45;
       padding: 14px 16px 16px;
@@ -56,11 +56,13 @@
       font: inherit; font-size: 14px; color: #1c1b22; background: #fff;
     }
     input[type=text]:focus { outline: none; border-color: #6d4fc2; box-shadow: 0 0 0 3px #f2eefb; }
-    .list { list-style: none; margin: 4px -16px 10px; padding: 0; max-height: 220px; overflow-y: auto;
+    .list { list-style: none; margin: 4px -16px 10px; padding: 0; overflow-y: auto;
+      max-height: clamp(180px, calc(100vh - 360px), 400px);
       border-top: 1px solid #ececf0; border-bottom: 1px solid #ececf0; }
+    .list li { display: flex; align-items: center; }
     .list li + li { border-top: 1px solid #ececf0; }
-    .list label { display: flex; align-items: center; gap: 10px; padding: 8px 16px; cursor: pointer; }
-    .list label:hover { background: #f6f5f9; }
+    .list label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; cursor: pointer; }
+    .list li:hover { background: #f6f5f9; }
     .list input { width: 16px; height: 16px; margin: 0; accent-color: #6d4fc2; flex: none; }
     .list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hint { font-size: 12px; color: #6b6a75; margin: 0 0 10px; }
@@ -70,7 +72,14 @@
     .btn.block { width: 100%; }
     .btn:disabled { opacity: 0.55; cursor: default; }
     .error { margin: 8px 0; padding: 8px 10px; border-radius: 6px; background: #fdf0f0; color: #b4262c; font-size: 13px; }
-    .status { min-height: 20px; margin-top: 8px; text-align: center; font-size: 13px; color: #2f7d4f; font-weight: 500; }
+    .count {
+      flex: none; margin-right: 10px; padding: 4px 10px; border: 1px solid #e4def6; border-radius: 999px;
+      background: #f7f5fd; color: #5c40ab; font-size: 12px; font-weight: 600; line-height: 1.3;
+      font-variant-numeric: tabular-nums;
+    }
+    .count:hover { background: #ece6fa; border-color: #d3c8f1; }
+    .count:focus-visible { outline: 2px solid #6d4fc2; outline-offset: 1px; }
+    .status { margin-top: 8px; text-align: center; font-size: 13px; color: #2f7d4f; font-weight: 500; }
     .loading { color: #6b6a75; padding: 12px 0; }
   `;
 
@@ -346,6 +355,19 @@
                   }),
                   h('span', null, label.name),
                 ),
+                label.count > 0 &&
+                  h(
+                    'button',
+                    {
+                      class: 'count',
+                      type: 'button',
+                      title: `View ${label.count} saved post${label.count === 1 ? '' : 's'}`,
+                      'aria-label': `View ${label.count} saved post${label.count === 1 ? '' : 's'} in ${label.name}`,
+                      'data-focus': `count-${label.id}`,
+                      onClick: () => openLabel(label.id),
+                    },
+                    `${label.count} \u203A`,
+                  ),
               ),
             ),
           )
@@ -357,8 +379,19 @@
         { class: 'btn primary block', type: 'button', disabled: p.saving, 'data-focus': 'save', onClick: save },
         existing ? 'Update' : 'Save',
       ),
-      h('div', { class: 'status', role: 'status' }, p.status),
+      p.status && h('div', { class: 'status', role: 'status' }, p.status),
     );
+  }
+
+  async function openLabel(labelId) {
+    try {
+      await send('openLabel', { labelId });
+    } catch (err) {
+      if (panel) {
+        panel.error = err.message;
+        renderPanel();
+      }
+    }
   }
 
   function renderNewLabel() {

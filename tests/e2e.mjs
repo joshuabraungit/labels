@@ -531,6 +531,36 @@ try {
     await panel(feed).waitFor({ state: 'detached' });
   });
 
+  await check('feed: picker shows post counts that open the label in a tab', async () => {
+    await feedButton(feed, ID1).click();
+    const pill = panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count');
+    await pill.waitFor();
+    assert.equal(await pill.textContent(), '1 \u203A');
+    assert.equal(await pill.getAttribute('title'), 'View 1 saved post');
+    assert.equal(
+      await panel(feed).locator('li', { hasText: 'Launches' }).locator('.count').count(),
+      1,
+      'labels with posts get a pill',
+    );
+    const before = await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('input').isChecked();
+    const [tab] = await Promise.all([context.waitForEvent('page'), pill.click()]);
+    assert.equal(
+      await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('input').isChecked(),
+      before,
+      'clicking the count does not tick the box',
+    );
+    await tab.locator('.header h2').waitFor();
+    assert.match(tab.url(), /popup\.html\?mode=tab&label=/);
+    assert.equal(await tab.locator('.header h2').textContent(), 'Feed picks');
+    assert.ok(
+      (await tab.locator('.post-open').allTextContents()).some(t => t.startsWith('Feed post one')),
+      'the label tab lists the saved post',
+    );
+    await tab.close();
+    await feed.keyboard.press('Escape');
+    await panel(feed).waitFor({ state: 'detached' });
+  });
+
   await check('feed: post found only by its timestamp link saves to Uncategorized; no duplicates', async () => {
     await feedButton(feed, ID2).click();
     assert.equal(
