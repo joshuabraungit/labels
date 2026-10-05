@@ -584,3 +584,19 @@ kbd {
   color: var(--success);
   font-weight: 600;
 }
+
+.save-section {
+  margin: 0 -16px 16px;
+  padding: 0 16px 6px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.tip {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.troubleshoot {
+  margin-top: 10px;
+}

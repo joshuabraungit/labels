@@ -17,9 +17,6 @@ const isTab = new URLSearchParams(location.search).get('mode') === 'tab';
 const app = document.getElementById('app');
 const importInput = document.getElementById('import-file');
 
-const NO_POST_MESSAGE = 'Open the LinkedIn post you want to save, then click Labels.';
-const FEED_MESSAGE = 'Click the Label button on any post to save it. Or open a post and click Labels here.';
-
 // Runs lib/capture.js in the tab, then capturePostText(postId, mode) from it.
 async function runCapture(tabId, postId, mode) {
   await chrome.scripting.executeScript({ target: { tabId }, files: ['lib/capture.js'] });
@@ -109,8 +106,8 @@ function render() {
   const caret = active && 'selectionStart' in active && active.type === 'text' ? active.selectionStart : null;
   state.focus = null;
 
-  const views = { save: renderSave, labels: renderLabels, label: renderLabel, edit: renderEdit, help: renderHelp };
-  app.replaceChildren(renderTopbar(), ...(state.view === 'save' || state.view === 'labels' ? [renderTabs()] : []));
+  const views = { save: renderHome, labels: renderHome, label: renderLabel, edit: renderEdit, help: renderHelp };
+  app.replaceChildren(renderTopbar());
   app.append(h('div', { class: 'content', inert: Boolean(state.dialog) }, views[state.view]()));
   if (state.menu) app.append(renderMenu());
   if (state.dialog) app.append(renderDialog());
@@ -143,22 +140,6 @@ function renderTopbar() {
       '?',
     ),
   );
-}
-
-function renderTabs() {
-  const tab = (view, text) =>
-    h(
-      'button',
-      {
-        class: 'tab',
-        role: 'tab',
-        'aria-selected': String(state.view === view),
-        'data-focus': `tab-${view}`,
-        onClick: () => go(view),
-      },
-      text,
-    );
-  return h('div', { class: 'tabs', role: 'tablist' }, tab('save', 'Save this post'), tab('labels', 'Your labels'));
 }
 
 function renderNewLabel(onCreated) {
@@ -278,17 +259,6 @@ function renderSave() {
         { class: 'error', role: 'alert' },
         'Labels can’t identify a reliable link for this post, so it can’t be saved. Open the post from its timestamp, then click Labels again.',
       ),
-      h('button', { class: 'link-btn', onClick: () => go('labels') }, 'Go to Your labels'),
-    );
-  }
-  if (page.kind !== 'post') {
-    return h(
-      'div',
-      null,
-      h('div', { class: 'notice' }, page.kind === 'linkedin-other' ? FEED_MESSAGE : NO_POST_MESSAGE),
-      page.kind === 'linkedin-other' &&
-        h('p', { class: 'meta' }, 'Don\u2019t see Label buttons on posts? ', renderCopyPageInfo()),
-      h('button', { class: 'link-btn', onClick: () => go('labels') }, 'Go to Your labels'),
     );
   }
 
@@ -307,7 +277,7 @@ function renderSave() {
     null,
     renderPreview(page.excerpt || existing?.excerpt),
     !page.excerpt && !existing?.excerpt && renderPreviewHelp(),
-    existing && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
+    state.wasSaved && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
     renderNewLabel(label => {
       state.selection.add(label.id);
       clearStatus();
@@ -375,17 +345,45 @@ async function onSave() {
   render();
 }
 
-function renderLabels() {
+// The popup's main screen: "Save this post" when the tab shows a single post (saving
+// elsewhere happens on the post itself), then the label list.
+function renderHome() {
+  const page = state.page;
+  const onPost = page.kind === 'post' || page.kind === 'post-unidentified';
+  return h(
+    'div',
+    null,
+    onPost &&
+      h('section', { class: 'save-section' }, h('h1', { class: 'section-title' }, 'Save this post'), renderSave()),
+    renderLabels({ compact: onPost }),
+  );
+}
+
+function renderTip() {
+  const key = state.shortcut;
+  return h(
+    'p',
+    { class: 'tip' },
+    'To label a post, click ',
+    h('strong', null, 'Label'),
+    ' under it on LinkedIn',
+    key ? [' or press ', h('kbd', null, key)] : '',
+    '.',
+  );
+}
+
+function renderLabels({ compact = false } = {}) {
   const rows = labelsWithCounts(state.data);
   const nothingSaved = Object.keys(state.data.posts).length === 0;
   return h(
     'div',
     null,
     h('h1', { class: 'section-title' }, 'Your labels'),
-    renderNewLabel(),
+    // On a post page, "+ New label" lives in the Save section above.
+    !compact && renderNewLabel(),
     h(
       'div',
-      { class: 'scroll tall', 'data-scroll': 'labels' },
+      { class: `scroll${compact ? '' : ' tall'}`, 'data-scroll': 'labels' },
       h(
         'ul',
         { class: 'list' },
@@ -408,7 +406,8 @@ function renderLabels() {
         ),
       ),
     ),
-    nothingSaved && h('p', { class: 'hint' }, 'Nothing saved yet. Open a LinkedIn post and click Labels to save it.'),
+    nothingSaved && h('p', { class: 'hint' }, 'Nothing saved yet.'),
+    renderTip(),
   );
 }
 
@@ -416,7 +415,7 @@ function renderLabel() {
   const name = labelName(state.data, state.labelId);
   if (!name) {
     state.view = 'labels';
-    return renderLabels();
+    return renderHome();
   }
   const system = state.labelId === UNCATEGORIZED_ID;
   const posts = postsForLabel(state.data, state.labelId);
@@ -562,7 +561,11 @@ function renderHelp() {
       h('li', null, 'Saves are stored in this Chrome profile.'),
       h('li', null, 'They do not automatically sync between devices.'),
       h('li', null, 'Uninstalling the extension can remove local data. Export a backup to keep a copy.'),
-      h('li', null, 'Previously saved LinkedIn posts are not imported.'),
+      h(
+        'li',
+        null,
+        'Posts saved with LinkedIn\u2019s own Save aren\u2019t imported automatically, but you can label them on LinkedIn\u2019s Saved posts page.',
+      ),
       h(
         'li',
         null,
@@ -576,6 +579,8 @@ function renderHelp() {
       h('button', { class: 'btn', onClick: onImportClick }, 'Import backup'),
     ),
     !isTab && h('p', { class: 'hint' }, 'Import opens in a new tab so you can choose a file.'),
+    state.page.tabId &&
+      h('p', { class: 'meta troubleshoot' }, 'Label buttons not showing on LinkedIn? ', renderCopyPageInfo()),
     state.helpError && h('div', { class: 'error', role: 'alert' }, state.helpError),
     state.helpMessage && h('div', { class: 'status', role: 'status' }, state.helpMessage),
     h(
@@ -866,13 +871,14 @@ async function init() {
     .getAll()
     .then(commands => {
       state.shortcut = commands.find(c => c.name === 'label-post')?.shortcut ?? '';
-      if (state.view === 'help') render();
+      render();
     })
     .catch(() => {});
   const [data, page] = await Promise.all([store.load(), detectPage()]);
   state.data = data;
   state.page = page;
   const existing = page.kind === 'post' && data.posts[page.id];
+  state.wasSaved = Boolean(existing);
   if (existing) {
     state.selection = new Set(existing.labelIds);
     // Posts saved before a preview could be read get one the next time they're opened.
@@ -889,7 +895,7 @@ async function init() {
     state.view = 'label';
     state.labelId = deepLabel;
   } else if (isTab) state.view = location.hash === '#help' ? 'help' : 'labels';
-  else state.view = page.kind === 'post' || page.kind === 'post-unidentified' ? 'save' : 'labels';
+  else state.view = 'labels';
   render();
 }
 

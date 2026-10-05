@@ -10,7 +10,9 @@ In the picker, labels that already have posts show a count like `3 ›`. Click i
 
 **Or from the keyboard:** press **Alt+Shift+L** (⌥⇧L on Mac) to open the picker for the post under your mouse, or the one filling most of the screen. That post is outlined in purple while the picker is open. Then type to filter your labels: **Enter** ticks the highlighted one (↑/↓ to move), typing a name that doesn't exist offers **Create "name"**, **Backspace** in the empty box unticks the last label you added, and **Enter** on an empty box (or **Ctrl/⌘+Enter** anytime) saves, shows **Saved ✓** with the labels for a moment, then closes by itself (move the mouse over it or press a key to keep it open). **Esc** closes without saving. Change the shortcut at `chrome://extensions/shortcuts`. Off LinkedIn, the shortcut opens the Labels popup.
 
-**Or from a post page:** open a LinkedIn post on its own page → click the Labels toolbar icon → pick labels → Save.
+**Or from a post page:** open a LinkedIn post on its own page → click the Labels toolbar icon. The popup shows **Save this post** above your labels.
+
+The toolbar popup opens to **Your labels**. "Save this post" only appears there when the tab shows a single post; on the feed you save with the Label buttons or the shortcut.
 
 **Find:** click Labels → Your labels → click a label → click a preview to open the original post.
 
@@ -18,7 +20,7 @@ Labels uses its own save action. It doesn't touch LinkedIn's Save button or Save
 
 ## Install (unpacked)
 
-1. Download `release/labels-extension-1.3.3.zip` and unzip it. You should get a folder with `manifest.json` at the top.
+1. Download `release/labels-extension-1.4.0.zip` and unzip it. You should get a folder with `manifest.json` at the top.
 2. In Chrome, go to `chrome://extensions`.
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and pick the unzipped folder.

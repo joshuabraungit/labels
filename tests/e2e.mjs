@@ -156,14 +156,11 @@ try {
   const noTextTab = await context.newPage();
   await noTextTab.goto(`${POST_B}?rcm=tracking`);
 
-  await check('feed page refuses to save and defaults to Your labels', async () => {
+  await check('feed page shows Your labels only, with a tip, and nothing to save', async () => {
     const p = await openPopup(context, extId, FEED);
-    assert.equal(await p.locator('h1.section-title').textContent(), 'Your labels');
-    await p.getByRole('tab', { name: 'Save this post' }).click();
-    assert.equal(
-      await p.locator('.notice').textContent(),
-      'Click the Label button on any post to save it. Or open a post and click Labels here.',
-    );
+    assert.deepEqual(await p.locator('h1.section-title').allTextContents(), ['Your labels']);
+    assert.equal(await p.getByRole('tab').count(), 0, 'no tabs');
+    assert.match(await p.locator('.tip').textContent(), /^To label a post, click Label under it on LinkedIn/);
     assert.equal(await p.getByRole('button', { name: /^(Save|Update)$/ }).count(), 0);
     await shot(p, '1-feed-page');
     await p.close();
@@ -171,7 +168,7 @@ try {
 
   await check('post page captures only the selected post text', async () => {
     const p = await openPopup(context, extId, POST_A);
-    assert.equal(await p.getByRole('tab', { name: 'Save this post' }).getAttribute('aria-selected'), 'true');
+    assert.deepEqual(await p.locator('h1.section-title').allTextContents(), ['Save this post', 'Your labels']);
     const preview = await p.locator('.preview').textContent();
     assert.ok(preview.startsWith('Design systems are not a project. They are a product with customers'), preview);
     assert.ok(preview.endsWith('…') && preview.length <= 161, preview);
@@ -231,7 +228,6 @@ try {
     assert.equal(await p.locator('.preview').textContent(), 'Open saved post');
     await p.getByRole('button', { name: 'Save', exact: true }).click();
     await p.getByText('Saved ✓').waitFor();
-    await p.getByRole('tab', { name: 'Your labels' }).click();
     assert.deepEqual(await labelsRows(p), ['ai:0', 'Design:1', 'Uncategorized:1']);
     await shot(p, '4-your-labels');
     await p.close();
@@ -336,7 +332,6 @@ try {
     await createLabel(p, 'Launches');
     await p.getByRole('button', { name: 'Update' }).click();
     await p.getByText('Saved ✓').waitFor();
-    await p.getByRole('tab', { name: 'Your labels' }).click();
     assert.deepEqual(await labelsRows(p), ['Launches:1', 'Uncategorized:1']);
     await p.close();
   });
@@ -457,7 +452,6 @@ try {
     assert.ok(!/Image only post|LinkedIn/.test(outline.split('\n').slice(5).join('\n')), 'outline has no page text');
     await p.getByRole('button', { name: 'Save', exact: true }).click();
     await p.getByText('Saved \u2713').waitFor();
-    await p.getByRole('tab', { name: 'Your labels' }).click();
     await p.locator('.label-row', { hasText: 'Uncategorized' }).click();
     assert.match(await p.locator('.post-open').first().textContent(), /^Open saved post \u00B7 saved \w{3} \d{1,2}$/);
     await p.close();
@@ -465,7 +459,6 @@ try {
     postEHasText = true;
     await tab.reload();
     p = await openPopup(context, extId, POST_E);
-    await p.getByRole('tab', { name: 'Your labels' }).click();
     await p.locator('.label-row', { hasText: 'Uncategorized' }).click();
     assert.ok((await p.locator('.post-open').first().textContent()).startsWith('Contrary to seemingly'));
     await p.close();
@@ -632,10 +625,10 @@ try {
     await feedButton(feed, ID1).getByText('Label', { exact: true }).waitFor();
   });
 
-  await check('feed: popup on the feed points to the buttons and can copy page info', async () => {
+  await check('feed: Help offers Copy page info on LinkedIn pages', async () => {
     const p = await openPopup(context, extId, FEED2);
-    await p.getByRole('tab', { name: 'Save this post' }).click();
-    assert.match(await p.locator('.notice').textContent(), /Label button on any post/);
+    // Troubleshooting lives in Help now.
+    await p.getByRole('button', { name: 'Help' }).click();
     await p.evaluate(() => {
       navigator.clipboard.writeText = async text => (window.copiedText = text);
     });
