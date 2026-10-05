@@ -79,6 +79,15 @@
     }
     .count:hover { background: #ece6fa; border-color: #d3c8f1; }
     .count:focus-visible { outline: 2px solid #6d4fc2; outline-offset: 1px; }
+    .query-wrap { margin: 0 0 6px; }
+    .query { width: 100%; }
+    .keys { margin: 6px 0 0; font-size: 11px; color: #8a8994; }
+    kbd { display: inline-block; padding: 0 5px; border: 1px solid #dedde4; border-bottom-width: 2px; border-radius: 4px;
+      background: #f7f7f9; font: inherit; font-size: 11px; font-weight: 600; color: #55545e; }
+    .list li.active { background: #f2eefb; box-shadow: inset 3px 0 0 #6d4fc2; }
+    .create-btn { flex: 1; display: flex; align-items: center; gap: 10px; padding: 9px 16px; border: 0; background: transparent;
+      color: #5c40ab; font-size: 14px; font-weight: 500; text-align: left; }
+    .create-btn .plus { width: 16px; text-align: center; font-weight: 700; }
     .status { margin-top: 8px; text-align: center; font-size: 13px; color: #2f7d4f; font-weight: 500; }
     .loading { color: #6b6a75; padding: 12px 0; }
   `;
@@ -253,13 +262,16 @@
       container,
       outline,
       viaKeyboard,
-      focusKey: viaKeyboard ? 'close' : null,
+      focusKey: 'close',
       text,
       loading: true,
       labels: [],
       post: null,
       selection: new Set(),
-      newLabel: { open: false, value: '', error: '' },
+      query: '', // the type-to-filter box
+      active: -1, // highlighted option (-1 = none)
+      added: [], // labels ticked in this session, newest last (Backspace removes)
+      createError: '',
       error: '',
       status: '',
       saving: false,
@@ -273,7 +285,7 @@
         panel.labels = state.labels;
         panel.post = state.post;
         panel.selection = new Set(state.post?.labelIds ?? []);
-        if (panel.viaKeyboard) panel.focusKey = state.labels.length ? `cb-${state.labels[0].id}` : 'new-label';
+        panel.focusKey = 'query';
         renderPanel();
       })
       .catch(err => {
@@ -309,7 +321,9 @@
   function renderPanel() {
     const p = panel;
     if (!p) return;
-    const focusedKey = p.box.getRootNode().activeElement?.dataset?.focus;
+    const focused = p.box.getRootNode().activeElement;
+    const focusedKey = focused?.dataset?.focus;
+    const caret = focused?.type === 'text' ? focused.selectionStart : null;
     const scroll = p.box.querySelector('.list')?.scrollTop ?? 0;
     const existing = p.post;
     const excerpt = shortPreview(p.text) || existing?.excerpt || '';
@@ -334,29 +348,163 @@
     p.box.querySelector('.icon').innerHTML = TAG_ICON;
     const list = p.box.querySelector('.list');
     if (list) list.scrollTop = scroll;
-    if (p.newLabel.focus) p.focusKey = 'new-label-input';
-    p.newLabel.focus = false;
     const key = p.focusKey || focusedKey;
     p.focusKey = null;
-    if (key) p.box.querySelector(`[data-focus="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
+    const target = key && p.box.querySelector(`[data-focus="${CSS.escape(key)}"]`);
+    if (target) {
+      target.focus({ preventScroll: true });
+      if (target.type === 'text') {
+        const at = key === focusedKey && caret != null ? Math.min(caret, target.value.length) : target.value.length;
+        target.setSelectionRange(at, at);
+      }
+    }
+    p.box.querySelector('.list li.active')?.scrollIntoView({ block: 'nearest' });
     positionPanel();
+  }
+
+  // Labels matching the filter box (prefix matches first), plus "Create …" when no label
+  // has exactly that name.
+  function labelOptions(p) {
+    const q = labelsClean(p.query).toLocaleLowerCase();
+    let labels = p.labels;
+    if (q) {
+      const matches = labels.filter(l => l.name.toLocaleLowerCase().includes(q));
+      const starts = matches.filter(l => l.name.toLocaleLowerCase().startsWith(q));
+      labels = [...starts, ...matches.filter(l => !starts.includes(l))];
+    }
+    const options = labels.map(label => ({ kind: 'label', label }));
+    if (q && !p.labels.some(l => l.name.toLocaleLowerCase() === q)) {
+      options.push({ kind: 'create', name: labelsClean(p.query) });
+    }
+    return options;
+  }
+
+  async function choose(option) {
+    const p = panel;
+    p.createError = '';
+    if (option.kind === 'label') {
+      const id = option.label.id;
+      if (p.selection.has(id)) {
+        p.selection.delete(id);
+        p.added = p.added.filter(a => a !== id);
+      } else {
+        p.selection.add(id);
+        p.added.push(id);
+      }
+    } else {
+      try {
+        const state = await send('createLabel', { name: option.name, postId: p.postId });
+        if (panel !== p) return;
+        p.labels = state.labels;
+        p.selection.add(state.created.id);
+        p.added.push(state.created.id);
+      } catch (err) {
+        p.createError = err.message;
+        p.focusKey = 'query';
+        renderPanel();
+        return;
+      }
+    }
+    p.query = '';
+    p.active = -1;
+    p.status = '';
+    p.focusKey = 'query';
+    renderPanel();
+  }
+
+  function onQueryKey(e) {
+    const p = panel;
+    const options = labelOptions(p);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!options.length) return;
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      p.active =
+        p.active < 0 ? (step > 0 ? 0 : options.length - 1) : (p.active + step + options.length) % options.length;
+      p.focusKey = 'query';
+      renderPanel();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (p.saving) return;
+      if (e.metaKey || e.ctrlKey) saveAndClose();
+      else if (p.active >= 0 && options[p.active]) choose(options[p.active]);
+      else if (!labelsClean(p.query)) saveAndClose();
+    } else if (e.key === 'Backspace' && !p.query && p.added.length) {
+      e.preventDefault();
+      p.selection.delete(p.added.pop());
+      p.focusKey = 'query';
+      renderPanel();
+    }
+  }
+
+  function renderQuery() {
+    const p = panel;
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    return h(
+      'div',
+      { class: 'query-wrap' },
+      h('input', {
+        type: 'text',
+        class: 'query',
+        value: p.query,
+        placeholder: 'Type to find or create a label…',
+        'aria-label': 'Find or create a label',
+        maxlength: '80',
+        autocomplete: 'off',
+        spellcheck: 'false',
+        'data-focus': 'query',
+        onInput: e => {
+          p.query = e.target.value;
+          p.active = labelsClean(p.query) ? 0 : -1;
+          p.createError = '';
+          renderPanel();
+        },
+        onKeydown: onQueryKey,
+      }),
+      h(
+        'p',
+        { class: 'keys' },
+        h('kbd', null, 'Enter'),
+        ' tick · ',
+        h('kbd', null, mac ? '⌘ Enter' : 'Ctrl Enter'),
+        ' save · ',
+        h('kbd', null, 'Esc'),
+        ' close',
+      ),
+      p.createError && h('div', { class: 'error', role: 'alert' }, p.createError),
+    );
   }
 
   function renderPickerBody() {
     const p = panel;
     const existing = p.post;
+    const options = labelOptions(p);
     return h(
       'div',
       null,
-      renderNewLabel(),
-      p.labels.length
+      renderQuery(),
+      options.length
         ? h(
             'ul',
-            { class: 'list' },
-            p.labels.map(label =>
-              h(
+            { class: 'list', role: 'listbox', 'aria-label': 'Labels' },
+            options.map((option, index) => {
+              const active = index === p.active ? ' active' : '';
+              if (option.kind === 'create') {
+                return h(
+                  'li',
+                  { class: `create${active}` },
+                  h(
+                    'button',
+                    { type: 'button', class: 'create-btn', onClick: () => choose(option) },
+                    h('span', { class: 'plus' }, '+'),
+                    h('span', null, `Create “${option.name}”`),
+                  ),
+                );
+              }
+              const label = option.label;
+              return h(
                 'li',
-                null,
+                { class: active.trim() || null },
                 h(
                   'label',
                   null,
@@ -365,8 +513,13 @@
                     checked: p.selection.has(label.id),
                     'data-focus': `cb-${label.id}`,
                     onChange: e => {
-                      if (e.target.checked) p.selection.add(label.id);
-                      else p.selection.delete(label.id);
+                      if (e.target.checked) {
+                        p.selection.add(label.id);
+                        p.added.push(label.id);
+                      } else {
+                        p.selection.delete(label.id);
+                        p.added = p.added.filter(a => a !== label.id);
+                      }
                       p.status = '';
                       renderPanel();
                     },
@@ -384,12 +537,12 @@
                       'data-focus': `count-${label.id}`,
                       onClick: () => openLabel(label.id),
                     },
-                    `${label.count} \u203A`,
+                    `${label.count} ›`,
                   ),
-              ),
-            ),
+              );
+            }),
           )
-        : h('p', { class: 'hint' }, 'No labels yet. Create one above.'),
+        : h('p', { class: 'hint' }, 'No labels yet. Type a name above to create one.'),
       h('p', { class: 'hint' }, 'Posts without a label go to Uncategorized.'),
       p.error && h('div', { class: 'error', role: 'alert' }, p.error),
       h(
@@ -399,6 +552,16 @@
       ),
       p.status && h('div', { class: 'status', role: 'status' }, p.status),
     );
+  }
+
+  // Keyboard save: save, close, and confirm with a short message on the page.
+  async function saveAndClose() {
+    const p = panel;
+    const ok = await save();
+    if (!ok || panel !== p) return;
+    const names = p.labels.filter(l => p.selection.has(l.id)).map(l => l.name);
+    closePanel();
+    toast(`Saved ✓ ${names.length ? names.join(', ') : 'Uncategorized'}`);
   }
 
   async function openLabel(labelId) {
@@ -412,65 +575,6 @@
     }
   }
 
-  function renderNewLabel() {
-    const p = panel;
-    const nl = p.newLabel;
-    if (!nl.open) {
-      return h(
-        'button',
-        {
-          class: 'link-btn',
-          type: 'button',
-          'data-focus': 'new-label',
-          onClick: () => {
-            p.newLabel = { open: true, value: '', error: '', focus: true };
-            renderPanel();
-          },
-        },
-        '+ New label',
-      );
-    }
-    const create = async () => {
-      try {
-        const state = await send('createLabel', { name: nl.value, postId: p.postId });
-        if (panel !== p) return;
-        p.labels = state.labels;
-        p.selection.add(state.created.id);
-        p.newLabel = { open: false, value: '', error: '' };
-        p.focusKey = `cb-${state.created.id}`;
-        p.status = '';
-      } catch (err) {
-        nl.error = err.message;
-        nl.focus = true;
-      }
-      renderPanel();
-    };
-    return h(
-      'div',
-      null,
-      h(
-        'form',
-        {
-          onSubmit: e => {
-            e.preventDefault();
-            create();
-          },
-        },
-        h('input', {
-          type: 'text',
-          value: nl.value,
-          placeholder: 'Label name',
-          'aria-label': 'New label name',
-          maxlength: '80',
-          'data-focus': 'new-label-input',
-          onInput: e => (nl.value = e.target.value),
-        }),
-        h('button', { class: 'btn primary', type: 'submit' }, 'Create'),
-      ),
-      nl.error && h('div', { class: 'error', role: 'alert' }, nl.error),
-    );
-  }
-
   async function save() {
     const p = panel;
     const returnFocus = p.box.getRootNode().activeElement?.dataset?.focus || 'save';
@@ -480,7 +584,7 @@
     renderPanel();
     try {
       const state = await send('savePost', { postId: p.postId, text: p.text, labelIds: [...p.selection] });
-      if (panel !== p) return;
+      if (panel !== p) return false;
       p.labels = state.labels;
       p.post = state.post;
       p.status = 'Saved ✓';
@@ -490,9 +594,11 @@
       // Keep the selection so the user can retry.
       p.error = err.message;
     }
+    if (panel !== p) return false;
     p.saving = false;
     p.focusKey = returnFocus;
     renderPanel();
+    return !p.error;
   }
 
   // ---------- keyboard shortcut ----------

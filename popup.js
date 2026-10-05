@@ -541,7 +541,7 @@ function renderHelp() {
           ? [
               'Keyboard shortcut: ',
               h('kbd', null, state.shortcut),
-              ' labels the post under your mouse, or the one most in view. ',
+              ' labels the post under your mouse, or the one most in view. Type to find or create a label, Enter to tick, Enter again to save. ',
             ]
           : 'Set a keyboard shortcut to label the post you\u2019re looking at. ',
         h(

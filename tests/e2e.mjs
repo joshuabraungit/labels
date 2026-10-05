@@ -499,9 +499,11 @@ try {
     const preview = await panel(feed).locator('.preview').textContent();
     assert.equal(preview, 'Feed post one: the best sales emails are short, specific, and about the buyer, not you.');
     assert.ok(!(await panel(feed).textContent()).includes('null'), 'no stray "null" in the picker');
-    await panel(feed).getByRole('button', { name: '+ New label' }).click();
-    await panel(feed).getByLabel('New label name').fill('Feed picks');
-    await panel(feed).getByRole('button', { name: 'Create' }).click();
+    // No label called that yet: the filter box offers to create it, and Enter does.
+    const query = panel(feed).getByLabel('Find or create a label');
+    await query.fill('Feed picks');
+    assert.equal(await panel(feed).locator('li.create.active').textContent(), '+Create \u201CFeed picks\u201D');
+    await query.press('Enter');
     await panel(feed).locator('label', { hasText: 'Feed picks' }).waitFor();
     assert.equal(await panel(feed).locator('label', { hasText: 'Feed picks' }).locator('input').isChecked(), true);
     await shot(feed, '11-feed-picker');
@@ -728,19 +730,41 @@ try {
       'SDUI post three has comments loaded underneath it.',
     );
     assert.equal(await outlined(sdui, S3), true, 'the chosen post is outlined');
+    // Never touching the mouse: type to filter, Enter to tick, type a new name, Enter to
+    // create it, Backspace to undo, Enter on an empty box to save and close.
     await sdui.waitForFunction(
-      () => document.querySelector('[data-labels-ui="panel"]')?.shadowRoot.activeElement?.type === 'checkbox',
+      () => document.querySelector('[data-labels-ui="panel"]')?.shadowRoot.activeElement?.dataset.focus === 'query',
     );
-    const first = await focusedInPicker(sdui);
-    await sdui.keyboard.press('Space');
-    assert.equal(await focusedInPicker(sdui), first, 'focus stays on the checkbox after ticking it');
+    const checked = () => panel(sdui).locator('li:has(input:checked) label span').allTextContents();
+    await sdui.keyboard.type('fee');
+    assert.deepEqual(await panel(sdui).locator('.list li label span').allTextContents(), ['Feed picks']);
     await sdui.keyboard.press('Enter');
-    await panel(sdui).getByText('Saved \u2713').waitFor();
-    await sdui.keyboard.press('Escape');
+    assert.equal(await focusedInPicker(sdui), 'query', 'focus stays in the box');
+    assert.equal(await panel(sdui).getByLabel('Find or create a label').inputValue(), '', 'box clears after Enter');
+    await sdui.keyboard.type('Keyboard only');
+    await sdui.keyboard.press('Enter');
+    await panel(sdui).locator('li label span', { hasText: 'Keyboard only' }).waitFor();
+    assert.deepEqual(await checked(), ['Feed picks', 'Keyboard only']);
+    await sdui.keyboard.press('Backspace');
+    assert.deepEqual(await checked(), ['Feed picks'], 'Backspace unticks the last label added');
+    await sdui.keyboard.type('key');
+    await sdui.keyboard.press('ArrowDown');
+    await sdui.keyboard.press('ArrowUp');
+    assert.match(await panel(sdui).locator('li.active').textContent(), /^Keyboard only/);
+    await sdui.keyboard.press('Enter');
+    await sdui.keyboard.press('Enter');
     await panel(sdui).waitFor({ state: 'detached' });
+    assert.equal(
+      await sdui.locator('[data-labels-ui="toast"] .toast').textContent(),
+      'Saved \u2713 Feed picks, Keyboard only',
+    );
     assert.equal(await outlined(sdui, S3), false, 'outline removed on close');
     const p = await openPopup(context, extId, FEED);
-    assert.equal((await storedData(p)).posts[S3].labelIds.length, 1);
+    const stored = await storedData(p);
+    assert.deepEqual(stored.posts[S3].labelIds.map(id => stored.labels[id].name).sort(), [
+      'Feed picks',
+      'Keyboard only',
+    ]);
     await p.close();
 
     // Not hovering a post: the post filling most of the screen is used; pressing again closes.
