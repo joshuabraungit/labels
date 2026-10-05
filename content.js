@@ -88,6 +88,14 @@
     .create-btn { flex: 1; display: flex; align-items: center; gap: 10px; padding: 9px 16px; border: 0; background: transparent;
       color: #5c40ab; font-size: 14px; font-weight: 500; text-align: left; }
     .create-btn .plus { width: 16px; text-align: center; font-weight: 700; }
+    .panel { transition: opacity 0.18s ease; }
+    .panel.fading { opacity: 0; }
+    .confirm {
+      display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 9px 12px;
+      border-radius: 8px; background: #edf7f0; color: #2f7d4f; text-align: center;
+    }
+    .confirm-title { font-weight: 700; font-size: 14px; }
+    .confirm-labels { font-size: 13px; color: #33503e; overflow-wrap: anywhere; }
     .status { margin-top: 8px; text-align: center; font-size: 13px; color: #2f7d4f; font-weight: 500; }
     .loading { color: #6b6a75; padding: 12px 0; }
   `;
@@ -240,6 +248,7 @@
     for (const type of ['keydown', 'keyup', 'keypress']) {
       box.addEventListener(type, e => {
         if (type === 'keydown' && e.key === 'Escape') closePanel();
+        else if (type === 'keydown') holdOpen();
         // Enter on a label checkbox saves, so the picker works from the keyboard alone.
         if (type === 'keydown' && e.key === 'Enter' && e.target.type === 'checkbox' && panel && !panel.saving) {
           e.preventDefault();
@@ -248,6 +257,14 @@
         e.stopPropagation();
       });
     }
+    // Moving the mouse over the picker keeps it open after a keyboard save.
+    // Ignores the synthetic moves Chrome sends when content changes under a still mouse.
+    let lastPointer = null;
+    box.addEventListener('pointermove', e => {
+      const moved = lastPointer && Math.abs(e.clientX - lastPointer.x) + Math.abs(e.clientY - lastPointer.y) > 2;
+      lastPointer = { x: e.clientX, y: e.clientY };
+      if (moved) holdOpen();
+    });
     document.body.append(host);
 
     const text = labelsPostText(container).text;
@@ -284,6 +301,7 @@
         panel.loading = false;
         panel.labels = state.labels;
         panel.post = state.post;
+        panel.wasSaved = Boolean(state.post);
         panel.selection = new Set(state.post?.labelIds ?? []);
         panel.focusKey = 'query';
         renderPanel();
@@ -298,6 +316,7 @@
 
   function closePanel() {
     if (!panel) return;
+    clearTimeout(panel.closeTimer);
     const { anchor, container, outline } = panel;
     panel.host.remove();
     panel = null;
@@ -310,9 +329,22 @@
     const r = panel.anchor.getBoundingClientRect();
     const box = panel.box;
     const width = box.offsetWidth;
-    const height = box.offsetHeight;
-    let top = r.bottom + 6;
-    if (top + height > window.innerHeight - 8 && r.top - height - 6 > 8) top = r.top - height - 6;
+    let height = box.offsetHeight;
+    // Decide above/below once, so the picker doesn't jump as its contents change.
+    if (!panel.placement) {
+      const fitsBelow = r.bottom + 6 + height <= window.innerHeight - 8;
+      panel.placement = fitsBelow || r.top - height - 6 <= 8 ? 'below' : 'above';
+    }
+    // When space is tight, shorten the (scrollable) label list instead of covering the
+    // post's Label button.
+    const list = box.querySelector('.list');
+    const room = panel.placement === 'below' ? window.innerHeight - 8 - (r.bottom + 6) : r.top - 6 - 8;
+    if (list && height > room) {
+      const listHeight = list.getBoundingClientRect().height;
+      list.style.maxHeight = `${Math.max(120, listHeight - (height - room))}px`;
+      height = box.offsetHeight;
+    }
+    let top = panel.placement === 'below' ? r.bottom + 6 : r.top - height - 6;
     top = Math.max(8, Math.min(top, window.innerHeight - height - 8));
     const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8));
     Object.assign(box.style, { top: `${top}px`, left: `${left}px` });
@@ -341,7 +373,7 @@
         ),
       ),
       h('p', { class: `preview${excerpt ? '' : ' fallback'}` }, h('span', null, excerpt || FALLBACK_PREVIEW)),
-      existing && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
+      p.wasSaved && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
       p.loading ? h('div', { class: 'loading' }, 'Loading your labels…') : renderPickerBody(),
     ];
     p.box.replaceChildren(...parts.filter(Boolean));
@@ -545,23 +577,50 @@
         : h('p', { class: 'hint' }, 'No labels yet. Type a name above to create one.'),
       h('p', { class: 'hint' }, 'Posts without a label go to Uncategorized.'),
       p.error && h('div', { class: 'error', role: 'alert' }, p.error),
-      h(
-        'button',
-        { class: 'btn primary block', type: 'button', disabled: p.saving, 'data-focus': 'save', onClick: save },
-        existing ? 'Update' : 'Save',
-      ),
-      p.status && h('div', { class: 'status', role: 'status' }, p.status),
+      p.closing
+        ? h(
+            'div',
+            { class: 'confirm', role: 'status' },
+            h('span', { class: 'confirm-title' }, 'Saved \u2713'),
+            h('span', { class: 'confirm-labels' }, p.closing),
+          )
+        : h(
+            'button',
+            { class: 'btn primary block', type: 'button', disabled: p.saving, 'data-focus': 'save', onClick: save },
+            existing ? 'Update' : 'Save',
+          ),
+      !p.closing && p.status && h('div', { class: 'status', role: 'status' }, p.status),
     );
   }
 
   // Keyboard save: save, close, and confirm with a short message on the page.
+  // Keyboard save: show what was saved for a moment, then fade out. Moving the mouse over
+  // the picker or pressing a key (other than Esc) keeps it open.
+  const CONFIRM_MS = 1500;
   async function saveAndClose() {
     const p = panel;
     const ok = await save();
     if (!ok || panel !== p) return;
     const names = p.labels.filter(l => p.selection.has(l.id)).map(l => l.name);
-    closePanel();
-    toast(`Saved ✓ ${names.length ? names.join(', ') : 'Uncategorized'}`);
+    p.closing = names.length ? names.join(', ') : 'Uncategorized';
+    p.status = 'Saved \u2713';
+    p.focusKey = 'query';
+    renderPanel();
+    clearTimeout(p.closeTimer);
+    p.closeTimer = setTimeout(() => {
+      if (panel !== p || !p.closing) return;
+      p.box.classList.add('fading');
+      p.closeTimer = setTimeout(() => panel === p && p.closing && closePanel(), 180);
+    }, CONFIRM_MS);
+  }
+
+  function holdOpen() {
+    const p = panel;
+    if (!p?.closing) return;
+    clearTimeout(p.closeTimer);
+    p.box.classList.remove('fading');
+    p.closing = null;
+    renderPanel();
   }
 
   async function openLabel(labelId) {

@@ -753,11 +753,9 @@ try {
     assert.match(await panel(sdui).locator('li.active').textContent(), /^Keyboard only/);
     await sdui.keyboard.press('Enter');
     await sdui.keyboard.press('Enter');
-    await panel(sdui).waitFor({ state: 'detached' });
-    assert.equal(
-      await sdui.locator('[data-labels-ui="toast"] .toast').textContent(),
-      'Saved \u2713 Feed picks, Keyboard only',
-    );
+    // Shows what was saved for a moment, then closes by itself.
+    assert.equal(await panel(sdui).locator('.confirm').textContent(), 'Saved \u2713Feed picks, Keyboard only');
+    await panel(sdui).waitFor({ state: 'detached', timeout: 4000 });
     assert.equal(await outlined(sdui, S3), false, 'outline removed on close');
     const p = await openPopup(context, extId, FEED);
     const stored = await storedData(p);
@@ -766,6 +764,22 @@ try {
       'Keyboard only',
     ]);
     await p.close();
+
+    // Moving the mouse over the confirmation keeps the picker open.
+    await pressShortcut(FEED3);
+    await panel(sdui).waitFor();
+    await sdui.waitForFunction(
+      () => document.querySelector('[data-labels-ui="panel"]')?.shadowRoot.activeElement?.dataset.focus === 'query',
+    );
+    await sdui.keyboard.press('Control+Enter');
+    await panel(sdui).locator('.confirm').waitFor();
+    const box = await panel(sdui).boundingBox();
+    for (let i = 0; i < 4; i++) await sdui.mouse.move(box.x + 40 + i * 12, box.y + 40);
+    await sdui.waitForTimeout(2500);
+    assert.equal(await panel(sdui).count(), 1, 'still open after the mouse moved onto it');
+    assert.equal(await panel(sdui).locator('.confirm').count(), 0, 'back to the normal picker');
+    await sdui.keyboard.press('Escape');
+    await panel(sdui).waitFor({ state: 'detached' });
 
     // Not hovering a post: the post filling most of the screen is used; pressing again closes.
     await sdui.mouse.move(1090, 5);
