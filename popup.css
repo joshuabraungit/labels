@@ -575,3 +575,12 @@ kbd {
 .shortcut {
   margin: 0 0 12px;
 }
+
+.btn.saved,
+.btn.saved:disabled {
+  opacity: 1;
+  background: #edf7f0;
+  border-color: #cfe8d7;
+  color: var(--success);
+  font-weight: 600;
+}

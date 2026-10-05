@@ -208,11 +208,18 @@ try {
 
   await check('saving again updates the same record', async () => {
     const p = await openPopup(context, extId, POST_A);
-    assert.equal(await p.getByRole('button', { name: 'Update' }).count(), 1);
+    // Already saved and unchanged: the button says so and can't be clicked.
+    assert.equal(await p.getByRole('button', { name: 'Saved \u2713' }).isDisabled(), true);
+    assert.equal(await p.getByRole('button', { name: 'Update' }).count(), 0);
     assert.equal(await p.locator('.check-row input:checked').count(), 2, 'existing labels shown');
     await p.locator('.check-row', { hasText: 'ai' }).locator('input').uncheck();
     await p.getByRole('button', { name: 'Update' }).click();
-    await p.getByText('Saved ✓').waitFor();
+    await p.getByRole('button', { name: 'Saved \u2713' }).waitFor();
+    // Changing it back to what's saved also shows Saved, no Update needed.
+    await p.locator('.check-row', { hasText: 'ai' }).locator('input').check();
+    assert.equal(await p.getByRole('button', { name: 'Update' }).count(), 1);
+    await p.locator('.check-row', { hasText: 'ai' }).locator('input').uncheck();
+    assert.equal(await p.getByRole('button', { name: 'Saved \u2713' }).isDisabled(), true);
     const data = await storedData(p);
     assert.equal(Object.keys(data.posts).length, 1);
     assert.deepEqual(data.posts['urn:li:activity:7212345678901234567'].labelIds, [designId]);
@@ -525,12 +532,18 @@ try {
     await p.close();
   });
 
-  await check('feed: Escape and outside clicks close the picker; reopening shows Update', async () => {
+  await check('feed: Escape and outside clicks close the picker; reopening shows it is saved', async () => {
     await feed.keyboard.press('Escape');
     await panel(feed).waitFor({ state: 'detached' });
     await feedButton(feed, ID1).click();
-    await panel(feed).getByRole('button', { name: 'Update' }).waitFor();
+    await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
+    assert.equal(await panel(feed).getByRole('button', { name: 'Saved \u2713' }).isDisabled(), true);
     assert.equal(await panel(feed).locator('label', { hasText: 'Feed picks' }).locator('input').isChecked(), true);
+    // Any change turns it back into Update; undoing the change goes back to Saved.
+    await panel(feed).locator('label', { hasText: 'Feed picks' }).locator('input').uncheck();
+    await panel(feed).getByRole('button', { name: 'Update' }).waitFor();
+    await panel(feed).locator('label', { hasText: 'Feed picks' }).locator('input').check();
+    await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
     await feed.mouse.click(5, 880);
     await panel(feed).waitFor({ state: 'detached' });
   });
@@ -578,9 +591,10 @@ try {
       'Feed post two is identified only by its timestamp link, nothing else at all.',
     );
     await panel(feed).getByRole('button', { name: 'Save', exact: true }).click();
-    await panel(feed).getByText('Saved \u2713').waitFor();
-    await panel(feed).getByRole('button', { name: 'Update' }).click();
-    await panel(feed).getByText('Saved \u2713').waitFor();
+    await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
+    // Saving the same post again (keyboard save) doesn't create a second record.
+    await panel(feed).getByLabel('Find or create a label').press('Control+Enter');
+    await panel(feed).locator('.confirm').waitFor();
     await feed.keyboard.press('Escape');
     const p = await openPopup(context, extId, FEED);
     const stored = await storedData(p);

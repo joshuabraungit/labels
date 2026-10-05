@@ -71,6 +71,7 @@
     .btn.primary:hover { background: #5c40ab; }
     .btn.block { width: 100%; }
     .btn:disabled { opacity: 0.55; cursor: default; }
+    .btn.saved, .btn.saved:disabled { opacity: 1; background: #edf7f0; border-color: #cfe8d7; color: #2f7d4f; font-weight: 600; }
     .error { margin: 8px 0; padding: 8px 10px; border-radius: 6px; background: #fdf0f0; color: #b4262c; font-size: 13px; }
     .count {
       flex: none; margin-right: 10px; padding: 4px 10px; border: 1px solid #e4def6; border-radius: 999px;
@@ -602,12 +603,18 @@
             h('span', { class: 'confirm-title' }, 'Saved \u2713'),
             h('span', { class: 'confirm-labels' }, p.closing),
           )
-        : h(
-            'button',
-            { class: 'btn primary block', type: 'button', disabled: p.saving, 'data-focus': 'save', onClick: save },
-            existing ? 'Update' : 'Save',
-          ),
-      !p.closing && p.status && h('div', { class: 'status', role: 'status' }, p.status),
+        : unchanged(p)
+          ? // Saved and nothing changed since: say so instead of offering a button with nothing to do.
+            h(
+              'button',
+              { class: 'btn saved block', type: 'button', disabled: true, 'data-focus': 'save' },
+              'Saved \u2713',
+            )
+          : h(
+              'button',
+              { class: 'btn primary block', type: 'button', disabled: p.saving, 'data-focus': 'save', onClick: save },
+              existing ? 'Update' : 'Save',
+            ),
     );
   }
 
@@ -639,6 +646,13 @@
     p.box.classList.remove('fading');
     p.closing = null;
     renderPanel();
+  }
+
+  // True when the post is saved and the ticked labels match what's saved.
+  function unchanged(p) {
+    if (!p.post) return false;
+    const saved = p.post.labelIds;
+    return saved.length === p.selection.size && saved.every(id => p.selection.has(id));
   }
 
   // Esc steps back out of a label's post list; otherwise it closes the picker.

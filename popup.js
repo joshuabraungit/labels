@@ -293,6 +293,11 @@ function renderSave() {
   }
 
   const existing = state.data.posts[page.id];
+  // Saved, and the ticked labels match what's saved: nothing to do.
+  const unchanged =
+    Boolean(existing) &&
+    existing.labelIds.length === state.selection.size &&
+    existing.labelIds.every(id => state.selection.has(id));
   const clearStatus = () => {
     state.saveStatus = '';
   };
@@ -310,12 +315,13 @@ function renderSave() {
     renderChecklist(state.selection, clearStatus),
     h('p', { class: 'hint' }, 'Posts without a label go to Uncategorized.'),
     state.saveError && h('div', { class: 'error', role: 'alert' }, state.saveError),
-    h(
-      'button',
-      { class: 'btn primary block', disabled: state.saving, 'data-focus': 'save', onClick: onSave },
-      existing ? 'Update' : 'Save',
-    ),
-    h('div', { class: 'status', role: 'status' }, state.saveStatus),
+    unchanged
+      ? h('button', { class: 'btn saved block', disabled: true, 'data-focus': 'save' }, 'Saved \u2713')
+      : h(
+          'button',
+          { class: 'btn primary block', disabled: state.saving, 'data-focus': 'save', onClick: onSave },
+          existing ? 'Update' : 'Save',
+        ),
   );
 }
 
