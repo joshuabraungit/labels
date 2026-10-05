@@ -91,8 +91,8 @@ test('labels: create, duplicates, reserved name, rename, delete', async () => {
     labelsWithCounts(data).map(r => [r.name, r.count]),
     [
       ['Hiring', 1],
-      ['Uncategorized', 0],
       ['Zebra', 2],
+      ['Uncategorized', 0],
     ],
   );
 

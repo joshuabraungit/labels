@@ -291,7 +291,7 @@ try {
     assert.equal(await p.locator('.header h2').textContent(), 'Zeta design');
     assert.equal(await p.locator('.post-open').count(), 1);
     await p.getByRole('button', { name: 'Back' }).click();
-    assert.deepEqual(await labelsRows(p), ['ai:0', 'Uncategorized:1', 'Zeta design:1']);
+    assert.deepEqual(await labelsRows(p), ['ai:0', 'Zeta design:1', 'Uncategorized:1']);
     await p.close();
   });
 
@@ -303,7 +303,7 @@ try {
     await p.locator('.check-row', { hasText: 'ai' }).locator('input').check();
     await p.getByRole('button', { name: 'Save', exact: true }).click();
     await p.getByRole('button', { name: 'Back' }).click();
-    assert.deepEqual(await labelsRows(p), ['ai:1', 'Uncategorized:1', 'Zeta design:1']);
+    assert.deepEqual(await labelsRows(p), ['ai:1', 'Zeta design:1', 'Uncategorized:1']);
 
     // Deleting "ai" keeps the post under Zeta design.
     await p.locator('.label-row', { hasText: 'ai' }).click();
@@ -315,7 +315,7 @@ try {
     );
     await shot(p, '7-delete-dialog');
     await p.getByRole('button', { name: 'Delete', exact: true }).click();
-    assert.deepEqual(await labelsRows(p), ['Uncategorized:1', 'Zeta design:1']);
+    assert.deepEqual(await labelsRows(p), ['Zeta design:1', 'Uncategorized:1']);
 
     // Deleting the last label sends the post to Uncategorized.
     await p.locator('.label-row', { hasText: 'Zeta design' }).click();
@@ -403,7 +403,7 @@ try {
     await p.getByRole('button', { name: 'Remove', exact: true }).click();
     assert.equal(await p.locator('.empty').count(), 1);
     await p.getByRole('button', { name: 'Back' }).click();
-    assert.deepEqual(await labelsRows(p), ['Launches:1', 'Uncategorized:0']);
+    assert.deepEqual(await labelsRows(p), ['Launches:1'], 'empty Uncategorized is hidden');
     await p.close();
   });
 

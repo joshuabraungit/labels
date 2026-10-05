@@ -373,7 +373,8 @@ function renderTip() {
 }
 
 function renderLabels({ compact = false } = {}) {
-  const rows = labelsWithCounts(state.data);
+  // Uncategorized only shows when it holds something.
+  const rows = labelsWithCounts(state.data).filter(row => !row.system || row.count > 0);
   const nothingSaved = Object.keys(state.data.posts).length === 0;
   return h(
     'div',
