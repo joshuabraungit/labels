@@ -596,3 +596,32 @@ kbd {
 .troubleshoot {
   margin-top: 10px;
 }
+
+/* Undo bar after removing a post */
+.undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #1c1b22;
+  color: #fff;
+  font-size: 13px;
+}
+
+.undo button {
+  border: 0;
+  background: transparent;
+  color: #c9b8ff;
+  font: inherit;
+  font-weight: 700;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.undo button:hover {
+  color: #fff;
+  text-decoration: underline;
+}

@@ -45,7 +45,8 @@ const state = {
   editSelection: new Set(),
   editError: '',
   menu: null, // { kind: 'label' | 'post', postId?, rect }
-  dialog: null, // { kind: 'rename' | 'delete' | 'remove', value?, error?, postId? }
+  dialog: null, // { kind: 'rename' | 'delete', value?, error? }
+  undo: null, // { post, timer }: a just-removed post that can be put back
   helpMessage: '',
   helpError: '',
   diagStatus: '',
@@ -78,6 +79,8 @@ function errorMessage(err) {
 }
 
 function go(view, extra = {}) {
+  clearTimeout(state.undo?.timer);
+  state.undo = null;
   Object.assign(state, { view, menu: null, dialog: null, newLabel: { open: false, value: '', error: '' } }, extra);
   render();
 }
@@ -425,6 +428,49 @@ function renderLabels({ compact = false } = {}) {
   );
 }
 
+// Removes right away, no confirm. An Undo bar shows for a few seconds instead.
+async function removePost(postId) {
+  const post = state.data.posts[postId];
+  state.menu = null;
+  if (!post) return render();
+  try {
+    const { data } = await store.removePost(postId);
+    state.data = data;
+    clearTimeout(state.undo?.timer);
+    state.undo = { post, timer: setTimeout(() => ((state.undo = null), render()), 6000) };
+    state.focus = 'undo';
+  } catch (err) {
+    console.error(err);
+  }
+  render();
+}
+
+async function undoRemove() {
+  const undo = state.undo;
+  if (!undo) return;
+  clearTimeout(undo.timer);
+  state.undo = null;
+  try {
+    const { data } = await store.restorePost(undo.post);
+    state.data = data;
+  } catch (err) {
+    alert(errorMessage(err));
+  }
+  render();
+}
+
+function renderUndo() {
+  return (
+    state.undo &&
+    h(
+      'div',
+      { class: 'undo', role: 'status' },
+      h('span', null, 'Removed from Labels'),
+      h('button', { type: 'button', 'data-focus': 'undo', onClick: undoRemove }, 'Undo'),
+    )
+  );
+}
+
 function renderLabel() {
   const name = labelName(state.data, state.labelId);
   if (!name) {
@@ -492,6 +538,7 @@ function renderLabel() {
           ),
         )
       : h('p', { class: 'empty' }, 'No saved posts with this label yet.'),
+    renderUndo(),
   );
 }
 
@@ -659,15 +706,7 @@ function renderMenu() {
       const post = state.data.posts[m.postId];
       go('edit', { editPostId: m.postId, editSelection: new Set(post?.labelIds ?? []), editError: '' });
     }),
-    item(
-      'Remove saved post',
-      () => {
-        state.dialog = { kind: 'remove', postId: m.postId };
-        state.focus = 'dialog-cancel';
-        render();
-      },
-      true,
-    ),
+    item('Remove saved post', () => removePost(m.postId), true),
   );
 }
 
@@ -743,20 +782,6 @@ function renderDialog() {
         render();
         alert(errorMessage(err));
       }
-    };
-  } else {
-    title = 'Remove saved post';
-    confirmText = 'Remove';
-    confirmClass = 'btn danger';
-    body = h('p', null, 'Remove this post from Labels? This doesn’t change anything on LinkedIn.');
-    onConfirm = async () => {
-      try {
-        const { data } = await store.removePost(d.postId);
-        state.data = data;
-      } catch (err) {
-        console.error(err);
-      }
-      closeDialog();
     };
   }
 

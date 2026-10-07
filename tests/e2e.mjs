@@ -407,8 +407,15 @@ try {
     const p = await openPopup(context, extId, FEED);
     await p.locator('.label-row', { hasText: 'Launches' }).click();
     await p.getByRole('button', { name: 'Saved post options' }).first().click();
+    // Removes right away, no confirm dialog; Undo puts it back.
     await p.getByRole('menuitem', { name: 'Remove saved post' }).click();
-    await p.getByRole('button', { name: 'Remove', exact: true }).click();
+    assert.equal(await p.locator('.dialog').count(), 0, 'no confirm dialog');
+    assert.equal(await p.locator('.post-open').count(), 1);
+    await p.getByRole('button', { name: 'Undo' }).click();
+    assert.equal(await p.locator('.post-open').count(), 2, 'back after Undo');
+    assert.equal(Object.keys((await storedData(p)).posts).length, 2);
+    await p.getByRole('button', { name: 'Saved post options' }).first().click();
+    await p.getByRole('menuitem', { name: 'Remove saved post' }).click();
     assert.equal(await p.locator('.post-open').count(), 1);
     await p.getByRole('button', { name: 'Back' }).click();
     assert.deepEqual(await labelsRows(p), ['Launches:1']);
@@ -684,7 +691,7 @@ try {
     await p.locator('.label-row', { hasText: 'Feed picks' }).click();
     await p.getByRole('button', { name: 'Saved post options' }).click();
     await p.getByRole('menuitem', { name: 'Remove saved post' }).click();
-    await p.getByRole('button', { name: 'Remove', exact: true }).click();
+    await p.getByRole('button', { name: 'Undo' }).waitFor();
     await p.close();
     await feedButton(feed, ID1).getByText('Label', { exact: true }).waitFor();
   });
