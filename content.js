@@ -42,11 +42,6 @@
     .head h2 { flex: 1; margin: 0; font-size: 15px; font-weight: 600; }
     .close { border: 0; background: transparent; color: #6b6a75; font-size: 20px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
     .close:hover { background: #f6f5f9; color: #1c1b22; }
-    .preview { margin: 0 0 12px; padding: 10px 12px; border: 1px solid #ececf0; border-radius: 8px; }
-    .preview span {
-      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
-    }
-    .preview.fallback { color: #6b6a75; font-style: italic; }
     .meta { margin: -4px 0 8px; font-size: 12px; color: #6b6a75; }
     .link-btn { border: 0; background: transparent; color: #6d4fc2; font-weight: 500; padding: 4px 0; font-size: 14px; }
     .link-btn:hover { color: #5c40ab; text-decoration: underline; }
@@ -443,11 +438,12 @@
               '×',
             ),
           ),
-          h('p', { class: `preview${excerpt ? '' : ' fallback'}` }, h('span', null, excerpt || FALLBACK_PREVIEW)),
           p.wasSaved && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
           p.loading ? h('div', { class: 'loading' }, 'Loading your labels…') : renderPickerBody(),
         ];
     p.box.replaceChildren(...parts.filter(Boolean));
+    // No preview on screen; the captured text stays on the element (used by the tests).
+    p.box.dataset.excerpt = excerpt;
     const icon = p.box.querySelector('.icon');
     if (icon) icon.innerHTML = TAG_ICON;
     const list = p.box.querySelector('.list');

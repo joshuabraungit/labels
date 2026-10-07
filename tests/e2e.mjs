@@ -563,7 +563,7 @@ try {
   await check('feed: picker captures the right post, creates labels, saves', async () => {
     await feedButton(feed, ID1).click();
     await panel(feed).waitFor();
-    const preview = await panel(feed).locator('.preview').textContent();
+    const preview = await panel(feed).getAttribute('data-excerpt');
     assert.equal(preview, 'Feed post one: the best sales emails are short, specific, and about the buyer, not you.');
     assert.ok(!(await panel(feed).textContent()).includes('null'), 'no stray "null" in the picker');
     // No label called that yet: the filter box offers to create it, and Enter does.
@@ -716,7 +716,7 @@ try {
   await check('feed: post found only by its timestamp link; saving needs a label; no duplicates', async () => {
     await feedButton(feed, ID2).click();
     assert.equal(
-      await panel(feed).locator('.preview').textContent(),
+      await panel(feed).getAttribute('data-excerpt'),
       'Feed post two is identified only by its timestamp link, nothing else at all.',
     );
     assert.equal(await panel(feed).getByRole('button', { name: 'Save', exact: true }).isDisabled(), true);
@@ -806,7 +806,7 @@ try {
 
     await feedButton(sdui, S1).click();
     assert.equal(
-      await panel(sdui).locator('.preview').textContent(),
+      await panel(sdui).getAttribute('data-excerpt'),
       'SDUI post one: here is one of the best cold DMs I have ever received. He told me exactly who he is.',
     );
     await panel(sdui).locator('label', { hasText: 'Launches' }).locator('input').check();
@@ -815,10 +815,7 @@ try {
     await sdui.keyboard.press('Escape');
 
     await feedButton(sdui, S3).click();
-    assert.equal(
-      await panel(sdui).locator('.preview').textContent(),
-      'SDUI post three has comments loaded underneath it.',
-    );
+    assert.equal(await panel(sdui).getAttribute('data-excerpt'), 'SDUI post three has comments loaded underneath it.');
     await sdui.keyboard.press('Escape');
 
     const p = await openPopup(context, extId, FEED);
@@ -847,7 +844,7 @@ try {
     }
     await feedButton(saved, P1).click();
     assert.equal(
-      await panel(saved).locator('.preview').textContent(),
+      await panel(saved).getAttribute('data-excerpt'),
       'Saved post one: I collect cold email subject lines I wish I wrote. Here are 7 from people who study outbound.',
     );
     await saved.keyboard.press('Escape');
@@ -883,10 +880,7 @@ try {
     await sdui.getByText('SDUI post three has comments loaded underneath it.').hover();
     await pressShortcut(FEED3);
     await panel(sdui).waitFor();
-    assert.equal(
-      await panel(sdui).locator('.preview').textContent(),
-      'SDUI post three has comments loaded underneath it.',
-    );
+    assert.equal(await panel(sdui).getAttribute('data-excerpt'), 'SDUI post three has comments loaded underneath it.');
     assert.equal(await outlined(sdui, S3), true, 'the chosen post is outlined');
     // Never touching the mouse: type to filter, Enter to tick, type a new name, Enter to
     // create it, Backspace to undo, Enter on an empty box to save and close.
@@ -955,7 +949,7 @@ try {
     await sdui.evaluate(() => window.scrollTo(0, 0));
     await pressShortcut(FEED3);
     await panel(sdui).waitFor();
-    assert.match(await panel(sdui).locator('.preview').textContent(), /^SDUI post one/);
+    assert.match(await panel(sdui).getAttribute('data-excerpt'), /^SDUI post one/);
     await pressShortcut(FEED3);
     await panel(sdui).waitFor({ state: 'detached' });
     await sdui.close();
