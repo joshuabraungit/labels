@@ -303,12 +303,13 @@ try {
     await p.locator('.label-row', { hasText: 'ai' }).click();
     await p.getByRole('button', { name: 'Options', exact: true }).click();
     await p.getByRole('menuitem', { name: 'Delete' }).click();
-    assert.equal(
-      await p.locator('.dialog p').textContent(),
-      'Delete this label? 1 saved post with no other label will be removed from Labels. Posts with other labels are kept.',
-    );
+    assert.deepEqual(await p.locator('.dialog p').allTextContents(), [
+      'Deleting the ai label will remove it from 2 posts and cannot be undone.',
+      '1 post has no other label and will be deleted too.',
+      'Do you want to permanently delete it?',
+    ]);
     await shot(p, '7-delete-dialog');
-    await p.getByRole('button', { name: 'Delete', exact: true }).click();
+    await p.getByRole('button', { name: 'Permanently delete it' }).click();
     assert.deepEqual(await labelsRows(p), ['Zeta design:1']);
     assert.deepEqual(Object.keys((await storedData(p)).posts), ['urn:li:activity:7212345678901234567']);
 
@@ -317,14 +318,17 @@ try {
     await p.locator('.label-row', { hasText: 'Spare' }).click();
     await p.getByRole('button', { name: 'Options', exact: true }).click();
     await p.getByRole('menuitem', { name: 'Delete' }).click();
-    assert.equal(await p.locator('.dialog p').textContent(), 'Delete this label? Your saved posts will be kept.');
-    await p.getByRole('button', { name: 'Delete', exact: true }).click();
+    assert.deepEqual(await p.locator('.dialog p').allTextContents(), [
+      'Deleting the Spare label cannot be undone.',
+      'Do you want to permanently delete it?',
+    ]);
+    await p.getByRole('button', { name: 'Permanently delete it' }).click();
 
     // Deleting the last label removes its post.
     await p.locator('.label-row', { hasText: 'Zeta design' }).click();
     await p.getByRole('button', { name: 'Options', exact: true }).click();
     await p.getByRole('menuitem', { name: 'Delete' }).click();
-    await p.getByRole('button', { name: 'Delete', exact: true }).click();
+    await p.getByRole('button', { name: 'Permanently delete it' }).click();
     assert.deepEqual(await labelsRows(p), []);
     assert.equal(Object.keys((await storedData(p)).posts).length, 0);
     await p.close();
@@ -636,6 +640,48 @@ try {
     await pill.click();
     await panel(feed).getByRole('button', { name: 'Back' }).click();
     await panel(feed).getByLabel('Find or create a label').waitFor();
+    await feed.keyboard.press('Escape');
+    await panel(feed).waitFor({ state: 'detached' });
+  });
+
+  await check('feed: delete a label from the picker, with a warning first', async () => {
+    await feedButton(feed, ID3).click();
+    const query = panel(feed).getByLabel('Find or create a label');
+    await query.fill('Temp');
+    await query.press('Enter');
+    await panel(feed).getByRole('button', { name: 'Save', exact: true }).click();
+    await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
+    await feedButton(feed, ID3).getByText('Labeled').waitFor();
+    const row = panel(feed).locator('li', { hasText: 'Temp' });
+    await row.hover();
+    await row.getByRole('button', { name: 'Delete label Temp' }).click();
+    // Asks first. Never mind (or Esc) goes back with nothing changed.
+    const warn = panel(feed).locator('.warn');
+    assert.deepEqual(await warn.locator('p').allTextContents(), [
+      'Deleting the Temp label will remove it from 1 post and cannot be undone.',
+      'That post has no other label, so it will be deleted too.',
+      'Do you want to permanently delete it?',
+    ]);
+    await panel(feed).getByRole('button', { name: 'Never mind' }).click();
+    assert.equal(await warn.count(), 0);
+    assert.equal(await row.locator('input').isChecked(), true);
+    await row.hover();
+    await row.getByRole('button', { name: 'Delete label Temp' }).click();
+    await feed.keyboard.press('Escape');
+    assert.equal(await warn.count(), 0);
+    assert.equal(await panel(feed).count(), 1, 'Esc only closes the warning');
+    await row.hover();
+    await row.getByRole('button', { name: 'Delete label Temp' }).click();
+    await panel(feed).getByRole('button', { name: 'Permanently delete it' }).click();
+    await warn.waitFor({ state: 'detached' });
+    assert.equal(await panel(feed).locator('li', { hasText: 'Temp' }).count(), 0);
+    await feedButton(feed, ID3).getByText('Label', { exact: true }).waitFor();
+    assert.equal(await panel(feed).getByRole('button', { name: 'Save', exact: true }).isDisabled(), true);
+    const p = await openPopup(context, extId, FEED);
+    const stored = await storedData(p);
+    assert.ok(!Object.values(stored.labels).some(l => l.name === 'Temp'));
+    assert.equal(stored.posts[ID3], undefined);
+    await p.close();
     await feed.keyboard.press('Escape');
     await panel(feed).waitFor({ state: 'detached' });
   });

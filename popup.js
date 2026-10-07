@@ -731,6 +731,7 @@ function renderDialog() {
   let body;
   let confirmText;
   let confirmClass = 'btn primary';
+  let cancelText = 'Cancel';
   let onConfirm;
 
   if (d.kind === 'rename') {
@@ -762,16 +763,33 @@ function renderDialog() {
     };
   } else if (d.kind === 'delete') {
     title = 'Delete label';
-    confirmText = 'Delete';
+    confirmText = 'Permanently delete it';
+    cancelText = 'Never mind';
     confirmClass = 'btn danger';
+    const count = postsForLabel(state.data, state.labelId).length;
     const only = postsOnlyIn(state.data, state.labelId);
-    body = h(
-      'p',
-      null,
-      only
-        ? `Delete this label? ${plural(only, 'saved post')} with no other label will be removed from Labels. Posts with other labels are kept.`
-        : 'Delete this label? Your saved posts will be kept.',
-    );
+    let also = '';
+    if (only && only === count) {
+      also =
+        count === 1
+          ? 'That post has no other label, so it will be deleted too.'
+          : 'Those posts have no other label, so they will be deleted too.';
+    } else if (only) {
+      also = `${plural(only, 'post')} ${only === 1 ? 'has' : 'have'} no other label and will be deleted too.`;
+    }
+    body = [
+      h(
+        'p',
+        { class: 'warn-title' },
+        'Deleting the ',
+        h('em', null, labelName(state.data, state.labelId)),
+        count
+          ? ` label will remove it from ${plural(count, 'post')} and cannot be undone.`
+          : ' label cannot be undone.',
+      ),
+      also && h('p', null, also),
+      h('p', null, 'Do you want to permanently delete it?'),
+    ];
     onConfirm = async () => {
       try {
         const { data } = await store.deleteLabel(state.labelId);
@@ -794,13 +812,18 @@ function renderDialog() {
     },
     h(
       'div',
-      { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
-      h('h3', null, title),
+      {
+        class: `dialog${d.kind === 'delete' ? ' warn' : ''}`,
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': title,
+      },
+      d.kind !== 'delete' && h('h3', null, title),
       body,
       h(
         'div',
         { class: 'actions' },
-        h('button', { class: 'btn', 'data-focus': 'dialog-cancel', onClick: closeDialog }, 'Cancel'),
+        h('button', { class: 'btn', 'data-focus': 'dialog-cancel', onClick: closeDialog }, cancelText),
         h('button', { class: confirmClass, 'data-focus': 'dialog-confirm', onClick: () => onConfirm() }, confirmText),
       ),
     ),

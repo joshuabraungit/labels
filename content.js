@@ -82,6 +82,28 @@
     }
     .count:hover { background: #ece6fa; border-color: #d3c8f1; }
     .count:focus-visible { outline: 2px solid #6d4fc2; outline-offset: 1px; }
+    .del {
+      flex: none; display: grid; place-items: center; margin-right: 8px; width: 28px; height: 28px; padding: 0;
+      border: 0; border-radius: 6px; background: transparent; color: #9a99a3; opacity: 0;
+    }
+    .list li:hover .del, .del:focus-visible { opacity: 1; }
+    .del:hover { background: #fdf0f0; color: #b4262c; }
+    .del svg { width: 16px; height: 16px; }
+    .warn {
+      margin: 4px 0 2px; padding: 18px 16px 16px; border-radius: 14px; text-align: center;
+      background: linear-gradient(120deg, #fff4cc 0%, #ffe9d2 55%, #ffe1d8 100%);
+    }
+    .warn-title { margin: 0 0 8px; font-size: 15px; font-weight: 700; line-height: 1.35; color: #1c1b22; }
+    .warn-title em { font-style: italic; }
+    .warn-text { margin: 0 0 6px; font-size: 14px; line-height: 1.4; color: #2e2d36; }
+    .warn-actions { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
+    .pill { border: 0; border-radius: 999px; padding: 8px 13px; font-size: 13px; font-weight: 600; color: #fff; cursor: pointer;
+      white-space: nowrap; }
+    .pill.keep { background: #6d4fc2; }
+    .pill.keep:hover { background: #5c40ab; }
+    .pill.delete { background: #c4260f; }
+    .pill.delete:hover { background: #a51f0b; }
+    .pill:focus-visible { outline: 2px solid #1c1b22; outline-offset: 2px; }
     .query-wrap { margin: 0 0 6px; }
     .query { width: 100%; }
     .keys { margin: 6px 0 0; font-size: 11px; color: #8a8994; }
@@ -152,6 +174,24 @@
       el.append(child instanceof Node ? child : String(child));
     }
     return el;
+  }
+
+  function trashIcon() {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    for (const d of ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 13h10l1-13', 'M9 7V4h6v3']) {
+      const path = document.createElementNS(ns, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', 'currentColor');
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      svg.append(path);
+    }
+    return svg;
   }
 
   async function send(type, payload = {}) {
@@ -543,6 +583,7 @@
 
   function renderPickerBody() {
     const p = panel;
+    if (p.confirmDelete) return renderDeleteConfirm();
     const existing = p.post;
     const options = labelOptions(p);
     return h(
@@ -605,6 +646,18 @@
                     },
                     `${label.count} ›`,
                   ),
+                h(
+                  'button',
+                  {
+                    class: 'del',
+                    type: 'button',
+                    title: 'Delete label',
+                    'aria-label': `Delete label ${label.name}`,
+                    'data-focus': `del-${label.id}`,
+                    onClick: () => askDeleteLabel(label),
+                  },
+                  trashIcon(),
+                ),
               );
             }),
           )
@@ -689,7 +742,8 @@
 
   // Esc steps back out of a label's post list; otherwise it closes the picker.
   function escape() {
-    if (panel?.viewLabel) backToPicker();
+    if (panel?.confirmDelete) cancelDeleteLabel();
+    else if (panel?.viewLabel) backToPicker();
     else closePanel();
   }
 
@@ -796,6 +850,92 @@
           ),
         ),
       p.error && h('div', { class: 'error', role: 'alert' }, p.error),
+    );
+  }
+
+  // Picks up what the background sent back after a label was deleted or restored.
+  function applyLabels(p, state) {
+    p.labels = state.labels;
+    p.post = state.post;
+    savedIds = new Set(state.savedIds);
+    buttons.forEach((_, id) => paintButton(id));
+  }
+
+  // Deleting a label asks first, in the picker itself.
+  function askDeleteLabel(label) {
+    panel.confirmDelete = label;
+    panel.error = '';
+    panel.focusKey = 'never-mind';
+    renderPanel();
+  }
+
+  function cancelDeleteLabel() {
+    const label = panel.confirmDelete;
+    panel.confirmDelete = null;
+    panel.focusKey = label ? `cb-${label.id}` : 'query';
+    renderPanel();
+  }
+
+  async function deleteLabel() {
+    const p = panel;
+    const label = p.confirmDelete;
+    if (!label) return;
+    p.error = '';
+    try {
+      const state = await send('deleteLabel', { labelId: label.id, postId: p.postId });
+      if (panel !== p) return;
+      applyLabels(p, state);
+      p.selection.delete(label.id);
+      p.added = p.added.filter(a => a !== label.id);
+      p.status = '';
+      p.confirmDelete = null;
+      p.focusKey = 'query';
+    } catch (err) {
+      p.error = err.message;
+    }
+    renderPanel();
+  }
+
+  function renderDeleteConfirm() {
+    const p = panel;
+    const { name, count, only } = p.confirmDelete;
+    const posts = n => `${n} post${n === 1 ? '' : 's'}`;
+    let also = '';
+    if (only && only === count) {
+      also =
+        count === 1
+          ? 'That post has no other label, so it will be deleted too.'
+          : 'Those posts have no other label, so they will be deleted too.';
+    } else if (only) {
+      also = `${posts(only)} ${only === 1 ? 'has' : 'have'} no other label and will be deleted too.`;
+    }
+    return h(
+      'div',
+      { class: 'warn', role: 'alertdialog', 'aria-label': 'Delete label' },
+      h(
+        'p',
+        { class: 'warn-title' },
+        'Deleting the ',
+        h('em', null, name),
+        count ? ` label will remove it from ${posts(count)} and cannot be undone.` : ' label cannot be undone.',
+      ),
+      also && h('p', { class: 'warn-text' }, also),
+      h('p', { class: 'warn-text' }, 'Do you want to permanently delete it?'),
+      p.error && h('div', { class: 'error', role: 'alert' }, p.error),
+      h(
+        'div',
+        { class: 'warn-actions' },
+        h(
+          'button',
+          { type: 'button', class: 'pill keep', 'data-focus': 'never-mind', onClick: cancelDeleteLabel },
+          'Never mind',
+        ),
+        h(
+          'button',
+          { type: 'button', class: 'pill delete', 'data-focus': 'delete-label', onClick: deleteLabel },
+          'Permanently delete it',
+        ),
+      ),
     );
   }
 

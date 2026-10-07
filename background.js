@@ -1,13 +1,18 @@
 // Handles storage for the feed buttons (content.js), so labels and saved posts are read
 // and written by the same code the toolbar popup uses.
 import { classifyUrl, makeExcerpt } from './lib/post.js';
-import { createStore, LabelsError, labelsWithCounts, postsForLabel } from './lib/store.js';
+import { createStore, LabelsError, labelsWithCounts, postsForLabel, postsOnlyIn } from './lib/store.js';
 
 const store = createStore(chrome.storage.local);
 
 function view(data, postId) {
   return {
-    labels: labelsWithCounts(data).map(l => ({ id: l.id, name: l.name, count: l.count })),
+    labels: labelsWithCounts(data).map(l => ({
+      id: l.id,
+      name: l.name,
+      count: l.count,
+      only: postsOnlyIn(data, l.id),
+    })),
     post: postId ? (data.posts[postId] ?? null) : null,
     savedIds: Object.keys(data.posts),
   };
@@ -40,6 +45,12 @@ const handlers = {
     }
     const { data } = await store.setPostLabels(postId, labelIds);
     return { ...view(data, currentPostId), posts: labelPostRows(data, labelId) };
+  },
+
+  // Deletes a label from the picker (after it asks). Posts with no other label go with it.
+  async deleteLabel({ labelId, postId }) {
+    const { data, result } = await store.deleteLabel(labelId);
+    return { ...view(data, postId), removed: result.removed };
   },
 
   async getState({ postId }) {
