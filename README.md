@@ -43,7 +43,7 @@ To update, unzip the new version over the same folder and click the reload icon 
 - **If the link can't be identified** (a post-looking page without a usable ID), saving is blocked with an error.
 - **Every saved post has at least one label.** Save stays greyed out until you pick or create one. Untick all of a saved post's labels and the button turns into **Remove from Labels**.
 - **Labels** are unique ignoring capitalization and surrounding spaces.
-- **Deleting a label** works from the label's ••• menu in the popup, or the trash icon that shows when you hover a label in the picker. Either way you get a warning that says how many posts have that label. Posts with no other label are deleted along with it; posts with other labels keep them.
+- **Deleting a label** works from the trash icon that shows when you hover a label (in the popup's label list or the picker), or from a label's ••• menu. Either way you get a warning that says how many posts have that label. Posts with no other label are deleted along with it; posts with other labels keep them.
 - **Deleted LinkedIn posts.** The saved link and excerpt stay in Labels, but Labels can't restore content LinkedIn has removed or made private.
 
 ## Storage and privacy

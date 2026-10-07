@@ -28,6 +28,24 @@ async function runCapture(tabId, postId, mode) {
   return injection?.result;
 }
 const FALLBACK_PREVIEW = 'Open saved post';
+function trashIcon() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const d of ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 13h10l1-13', 'M9 7V4h6v3']) {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.append(path);
+  }
+  return svg;
+}
+
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 const state = {
@@ -407,7 +425,7 @@ function renderLabels({ compact = false } = {}) {
         rows.map(row =>
           h(
             'li',
-            null,
+            { class: 'label-item' },
             h(
               'button',
               {
@@ -418,6 +436,21 @@ function renderLabels({ compact = false } = {}) {
               h('span', { class: 'name' }, row.name),
               h('span', { class: 'count', 'aria-label': `${row.count} saved posts` }, String(row.count)),
               h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
+            ),
+            h(
+              'button',
+              {
+                class: 'del',
+                title: 'Delete label',
+                'aria-label': `Delete label ${row.name}`,
+                'data-focus': `del-${row.id}`,
+                onClick: () => {
+                  state.dialog = { kind: 'delete', labelId: row.id };
+                  state.focus = 'dialog-cancel';
+                  render();
+                },
+              },
+              trashIcon(),
             ),
           ),
         ),
@@ -766,8 +799,10 @@ function renderDialog() {
     confirmText = 'Permanently delete it';
     cancelText = 'Never mind';
     confirmClass = 'btn danger';
-    const count = postsForLabel(state.data, state.labelId).length;
-    const only = postsOnlyIn(state.data, state.labelId);
+    // From the label list (d.labelId) or the label screen's options (state.labelId).
+    const labelId = d.labelId ?? state.labelId;
+    const count = postsForLabel(state.data, labelId).length;
+    const only = postsOnlyIn(state.data, labelId);
     let also = '';
     if (only && only === count) {
       also =
@@ -782,7 +817,7 @@ function renderDialog() {
         'p',
         { class: 'warn-title' },
         'Deleting the ',
-        h('em', null, labelName(state.data, state.labelId)),
+        h('em', null, labelName(state.data, labelId)),
         count
           ? ` label will remove it from ${plural(count, 'post')} and cannot be undone.`
           : ' label cannot be undone.',
@@ -792,8 +827,12 @@ function renderDialog() {
     ];
     onConfirm = async () => {
       try {
-        const { data } = await store.deleteLabel(state.labelId);
+        const { data } = await store.deleteLabel(labelId);
         state.data = data;
+        state.selection?.delete(labelId);
+        state.editSelection?.delete(labelId);
+        if (state.page?.id) state.wasSaved = Boolean(data.posts[state.page.id]);
+        state.saveStatus = '';
         go('labels');
       } catch (err) {
         state.dialog = null;

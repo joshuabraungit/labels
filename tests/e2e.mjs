@@ -348,6 +348,33 @@ try {
     await p.close();
   });
 
+  await check('delete a label from the popup list, with the same warning', async () => {
+    const tab = await context.newPage();
+    await tab.goto(POST_A);
+    const p = await openPopup(context, extId, POST_A);
+    await createLabel(p, 'Gone');
+    await p.getByRole('button', { name: 'Update' }).click();
+    await p.getByText('Saved \u2713').waitFor();
+    assert.deepEqual(await labelsRows(p), ['Gone:1', 'Launches:2']);
+    const row = p.locator('.label-item', { hasText: 'Gone' });
+    await row.hover();
+    await row.getByRole('button', { name: 'Delete label Gone' }).click();
+    assert.deepEqual(await p.locator('.dialog p').allTextContents(), [
+      'Deleting the Gone label will remove it from 1 post and cannot be undone.',
+      'Do you want to permanently delete it?',
+    ]);
+    await p.getByRole('button', { name: 'Never mind' }).click();
+    assert.deepEqual(await labelsRows(p), ['Gone:1', 'Launches:2']);
+    await row.hover();
+    await row.getByRole('button', { name: 'Delete label Gone' }).click();
+    await p.getByRole('button', { name: 'Permanently delete it' }).click();
+    assert.deepEqual(await labelsRows(p), ['Launches:2']);
+    assert.deepEqual(await p.locator('.check-row span').allTextContents(), ['Launches']);
+    await p.getByRole('button', { name: 'Saved \u2713' }).waitFor();
+    await p.close();
+    await tab.close();
+  });
+
   let backupPath;
   await check('export backup', async () => {
     const p = await openPopup(context, extId, FEED);

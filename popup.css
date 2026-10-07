@@ -316,8 +316,50 @@ button {
 }
 
 .check-row:hover,
-.label-row:hover {
+.label-item:hover {
   background: var(--hover);
+}
+
+.label-item {
+  display: flex;
+  align-items: center;
+}
+
+.label-item .label-row {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Trash icon on a label row: shows on hover or keyboard focus */
+.label-item .del {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--faint);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.label-item:hover .del,
+.label-item .del:focus-visible {
+  opacity: 1;
+}
+
+.label-item .del:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.label-item .del svg {
+  width: 16px;
+  height: 16px;
 }
 
 .check-row input {
