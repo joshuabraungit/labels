@@ -140,8 +140,6 @@
     }
     .undo button { border: 0; background: transparent; color: #c9b8ff; font-weight: 700; font-size: 13px; padding: 2px 4px; }
     .undo button:hover { color: #fff; text-decoration: underline; }
-    .this-post { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 999px; background: #f2eefb;
-      color: #5c40ab; font-size: 11px; font-weight: 600; }
     .panel.fading { opacity: 0; }
     .confirm {
       display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 9px 12px;
@@ -820,7 +818,6 @@
                     { class: `excerpt${post.excerpt ? '' : ' fallback'}` },
                     post.excerpt || `${FALLBACK_PREVIEW} \u00B7 saved ${savedOn(post.savedAt)}`,
                   ),
-                  post.id === p.postId && h('span', { class: 'this-post' }, 'This post'),
                 ),
                 h(
                   'button',

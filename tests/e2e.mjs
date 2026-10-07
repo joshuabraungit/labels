@@ -601,7 +601,7 @@ try {
     assert.equal(await rows.count(), 1);
     assert.ok((await rows.first().textContent()).startsWith('Feed post one'));
     assert.equal(await rows.first().getAttribute('href'), `https://www.linkedin.com/feed/update/${ID1}/`);
-    assert.match(await rows.first().textContent(), /This post$/, 'marks the post being labeled');
+    assert.equal(await panel(feed).getByText('This post').count(), 0, 'no "This post" tag');
     // Remove the post from this label, then undo.
     await panel(feed).getByRole('button', { name: 'Remove from Feed picks' }).click();
     await panel(feed).locator('.undo').waitFor();
