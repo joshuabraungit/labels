@@ -28,20 +28,15 @@ const handlers = {
     return { posts: labelPostRows(await store.load(), labelId) };
   },
 
-  // Takes a post out of one label (or puts it back, for Undo). Other labels are untouched;
-  // Removing a post's last label deletes the saved post (returned as `deleted`, so Undo
-  // can restore it exactly via `restore`).
-  async setInLabel({ postId, labelId, inLabel, currentPostId, restore }) {
-    if (restore) {
-      const { data } = await store.restorePost(restore);
-      return { ...view(data, currentPostId), posts: labelPostRows(data, labelId) };
-    }
+  // Takes a post out of one label. Other labels are untouched; removing a post's last
+  // label deletes the saved post.
+  async setInLabel({ postId, labelId, currentPostId }) {
     const post = (await store.load()).posts[postId];
     if (!post) throw new LabelsError('This saved post no longer exists.');
-    const labelIds = inLabel ? [...new Set([...post.labelIds, labelId])] : post.labelIds.filter(id => id !== labelId);
-    if (!inLabel && labelIds.length === 0) {
+    const labelIds = post.labelIds.filter(id => id !== labelId);
+    if (labelIds.length === 0) {
       const { data } = await store.removePost(postId);
-      return { ...view(data, currentPostId), posts: labelPostRows(data, labelId), deleted: post };
+      return { ...view(data, currentPostId), posts: labelPostRows(data, labelId) };
     }
     const { data } = await store.setPostLabels(postId, labelIds);
     return { ...view(data, currentPostId), posts: labelPostRows(data, labelId) };

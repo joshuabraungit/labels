@@ -629,11 +629,11 @@ try {
     assert.ok((await rows.first().textContent()).startsWith('Feed post one'));
     assert.equal(await rows.first().getAttribute('href'), `https://www.linkedin.com/feed/update/${ID1}/`);
     assert.equal(await panel(feed).getByText('This post').count(), 0, 'no "This post" tag');
-    // Remove the post from this label, then undo.
+    // Remove the post from this label: no confirm, no Undo bar.
     await panel(feed).getByRole('button', { name: 'Remove from Feed picks' }).click();
-    await panel(feed).locator('.undo').waitFor();
+    await panel(feed).getByText('No saved posts with this label.').waitFor();
+    assert.equal(await panel(feed).locator('.undo').count(), 0, 'no Undo bar');
     // It was the post's only label, so the saved post is deleted.
-    assert.equal(await panel(feed).locator('.undo span').textContent(), 'Deleted from Labels');
     assert.equal(await rows.count(), 0, 'gone from the list');
     await feedButton(feed, ID1).getByText('Label', { exact: true }).waitFor();
     await panel(feed).getByRole('button', { name: 'Back' }).click();
@@ -645,17 +645,13 @@ try {
     assert.equal(await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count').count(), 0, 'count gone');
     await panel(feed).locator('li', { hasText: 'Launches' }).locator('.count').click();
     await panel(feed).getByRole('button', { name: 'Back' }).click();
-    // Not saved any more, so the picker offers Save. Re-add, then remove + Undo in the label view.
+    // Not saved any more, so the picker offers Save. Re-add it for the next steps.
     await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('input').check();
     await panel(feed).getByRole('button', { name: 'Save', exact: true }).click();
     await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
-    await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count').click();
-    await panel(feed).getByRole('button', { name: 'Remove from Feed picks' }).click();
-    await panel(feed).getByRole('button', { name: 'Undo' }).click();
-    await panel(feed).locator('.posts a').first().waitFor();
-    assert.equal(await panel(feed).locator('.undo').count(), 0);
-    assert.equal(await rows.count(), 1, 'back after Undo');
     await feedButton(feed, ID1).getByText('Labeled').waitFor();
+    await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count').click();
+    assert.equal(await rows.count(), 1);
     // Esc (or Back) returns to the picker as it was, without ticking anything.
     await feed.keyboard.press('Escape');
     await panel(feed).locator('.label-view').waitFor({ state: 'detached' });
@@ -921,7 +917,7 @@ try {
     await feedButton(sdui, S3).click();
     await panel(sdui).locator('li', { hasText: 'Keyboard only' }).locator('.count').click();
     await panel(sdui).getByRole('button', { name: 'Remove from Keyboard only' }).click();
-    assert.equal(await panel(sdui).locator('.undo span').textContent(), 'Removed from Keyboard only');
+    await panel(sdui).getByText('No saved posts with this label.').waitFor();
     await panel(sdui).getByRole('button', { name: 'Back' }).click();
     assert.deepEqual(await checked(), ['Feed picks'], 'still saved with its other label');
     await feedButton(sdui, S3).getByText('Labeled').waitFor();

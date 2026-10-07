@@ -129,12 +129,6 @@
     }
     .posts li:hover .remove, .posts .remove:focus-visible { opacity: 1; }
     .posts .remove:hover { background: #fdf0f0; color: #b4262c; }
-    .undo {
-      display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 0;
-      padding: 8px 12px; border-radius: 8px; background: #1c1b22; color: #fff; font-size: 13px;
-    }
-    .undo button { border: 0; background: transparent; color: #c9b8ff; font-weight: 700; font-size: 13px; padding: 2px 4px; }
-    .undo button:hover { color: #fff; text-decoration: underline; }
     .panel.fading { opacity: 0; }
     .confirm {
       display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 9px 12px;
@@ -823,7 +817,7 @@
                     title: `Remove from ${v.name}`,
                     'aria-label': `Remove from ${v.name}`,
                     'data-focus': `remove-${post.id}`,
-                    onClick: () => setInLabel(post, false),
+                    onClick: () => removeFromLabel(post),
                   },
                   '\u00D7',
                 ),
@@ -831,17 +825,6 @@
             ),
           )
         : h('p', { class: 'hint' }, 'No saved posts with this label.'),
-      v.undo &&
-        h(
-          'div',
-          { class: 'undo', role: 'status' },
-          h('span', null, v.undo.deleted ? 'Deleted from Labels' : `Removed from ${v.name}`),
-          h(
-            'button',
-            { type: 'button', 'data-focus': 'undo', onClick: () => setInLabel(v.undo.post, true, v.undo.deleted) },
-            'Undo',
-          ),
-        ),
       p.error && h('div', { class: 'error', role: 'alert' }, p.error),
     );
   }
@@ -932,19 +915,18 @@
     );
   }
 
-  // Removes a post from the label being viewed (inLabel = false), or puts it back (Undo).
-  // If it was the post's last label, the saved post is deleted; `restore` brings it back.
-  async function setInLabel(post, inLabel, restore) {
+  // Removes a post from the label being viewed, right away (no confirm, no Undo). If it was
+  // the post's last label, the saved post is deleted.
+  async function removeFromLabel(post) {
     const p = panel;
     const v = p.viewLabel;
+    const index = v.posts.findIndex(x => x.id === post.id);
     p.error = '';
     try {
       const state = await send('setInLabel', {
         postId: post.id,
         labelId: v.id,
-        inLabel,
         currentPostId: p.postId,
-        restore: restore || undefined,
       });
       if (panel !== p || p.viewLabel !== v) return;
       v.posts = state.posts;
@@ -956,17 +938,9 @@
         p.post = state.post;
         p.selection = new Set(state.post?.labelIds ?? []);
       }
-      clearTimeout(v.undoTimer);
-      v.undo = inLabel ? null : { post, deleted: state.deleted || null };
-      p.focusKey = inLabel ? `remove-${post.id}` : 'undo';
-      if (!inLabel) {
-        v.undoTimer = setTimeout(() => {
-          if (panel === p && p.viewLabel === v && v.undo?.post === post) {
-            v.undo = null;
-            renderPanel();
-          }
-        }, 6000);
-      }
+      // Keep keyboard focus in the list: the next post's ✕, or Back when the list is empty.
+      const next = v.posts[Math.min(index, v.posts.length - 1)];
+      p.focusKey = next ? `remove-${next.id}` : 'back';
     } catch (err) {
       p.error = err.message;
     }
