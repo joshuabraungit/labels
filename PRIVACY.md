@@ -1,6 +1,6 @@
 # Privacy Policy for Labels
 
-_Last updated: October 4, 2026_
+_Last updated: October 7, 2026_
 
 Labels is a Chrome extension that lets you save LinkedIn posts with your own labels and find them again later. This policy explains what information Labels handles and what happens to it.
 
@@ -36,7 +36,7 @@ The only way data leaves the extension is if **you** choose **Export backup**, w
 Your data stays in your browser until you remove it:
 
 - Remove a single saved post with **Remove saved post** in the popup.
-- Delete labels with **Delete** in a label's options (your posts are kept and move to Uncategorized if they have no other label).
+- Delete labels with **Delete** in a label's options. Posts that have no other label are removed too, and Labels tells you how many before you confirm.
 - Remove all Labels data by uninstalling the extension, or by clearing the extension's storage in Chrome.
 
 Data saved in one Chrome profile does not sync to other devices or profiles.

@@ -7,7 +7,8 @@ import {
   exportBackup,
   labelsWithCounts,
   postsForLabel,
-  UNCATEGORIZED_ID,
+  postsOnlyIn,
+  STORAGE_KEY,
   validateBackup,
 } from '../lib/store.js';
 
@@ -71,12 +72,11 @@ test('makeExcerpt collapses whitespace and cuts at a word boundary', () => {
   assert.equal(makeExcerpt(''), '');
 });
 
-test('labels: create, duplicates, reserved name, rename, delete', async () => {
+test('labels: create, duplicates, rename, delete', async () => {
   const store = createStore(memoryArea());
   const { result: ai } = await store.createLabel('  AI   tools ');
   assert.equal(ai.name, 'AI tools');
   await assert.rejects(store.createLabel('ai TOOLS'), /already have/);
-  await assert.rejects(store.createLabel(' uncategorized '), /reserved/);
   await assert.rejects(store.createLabel('   '), /Enter a label/);
   const { result: hiring } = await store.createLabel('Hiring');
 
@@ -92,33 +92,66 @@ test('labels: create, duplicates, reserved name, rename, delete', async () => {
     [
       ['Hiring', 1],
       ['Zebra', 2],
-      ['Uncategorized', 0],
     ],
   );
 
-  ({ data } = await store.deleteLabel(ai.id));
-  assert.equal(Object.keys(data.posts).length, 2, 'posts are kept');
+  // Deleting a label removes the posts that had only that label and keeps the rest.
+  assert.equal(postsOnlyIn(data, ai.id), 1);
+  let result;
+  ({ data, result } = await store.deleteLabel(ai.id));
+  assert.equal(result.removed, 1);
+  assert.deepEqual(Object.keys(data.posts), ['urn:li:activity:1']);
   assert.deepEqual(data.posts['urn:li:activity:1'].labelIds, [hiring.id]);
   assert.deepEqual(
-    postsForLabel(data, UNCATEGORIZED_ID).map(p => p.id),
-    ['urn:li:activity:2'],
+    labelsWithCounts(data).map(r => r.name),
+    ['Hiring'],
   );
-  await assert.rejects(store.deleteLabel(UNCATEGORIZED_ID), /can.t be deleted/);
-  await assert.rejects(store.renameLabel(UNCATEGORIZED_ID, 'x'), /can.t be renamed/);
 });
 
 test('saving twice updates the same record', async () => {
   const store = createStore(memoryArea());
   const { result: l } = await store.createLabel('Ideas');
-  const first = await store.savePost({ id: 'urn:li:activity:1', url: POST_A, excerpt: 'hi', labelIds: [] });
+  const { result: m } = await store.createLabel('More');
+  const first = await store.savePost({ id: 'urn:li:activity:1', url: POST_A, excerpt: 'hi', labelIds: [m.id] });
   assert.equal(first.result.created, true);
-  assert.deepEqual(postsForLabel(first.data, UNCATEGORIZED_ID).length, 1);
+  assert.deepEqual(postsForLabel(first.data, m.id).length, 1);
   const second = await store.savePost({ id: 'urn:li:activity:1', url: POST_A, excerpt: '', labelIds: [l.id] });
   assert.equal(second.result.created, false);
   assert.equal(Object.keys(second.data.posts).length, 1);
   assert.equal(second.data.posts['urn:li:activity:1'].excerpt, 'hi', 'empty capture keeps old excerpt');
   assert.equal(second.data.posts['urn:li:activity:1'].savedAt, first.data.posts['urn:li:activity:1'].savedAt);
-  assert.equal(postsForLabel(second.data, UNCATEGORIZED_ID).length, 0);
+  assert.equal(postsForLabel(second.data, m.id).length, 0);
+});
+
+test('a post needs at least one label', async () => {
+  const store = createStore(memoryArea());
+  await assert.rejects(
+    store.savePost({ id: 'urn:li:activity:1', url: POST_A, excerpt: 'hi', labelIds: [] }),
+    /Pick or create a label/,
+  );
+  const { result: l } = await store.createLabel('Ideas');
+  await store.savePost({ id: 'urn:li:activity:1', url: POST_A, excerpt: 'hi', labelIds: [l.id] });
+  // Saving an existing post with no labels removes it.
+  const cleared = await store.savePost({ id: 'urn:li:activity:1', url: POST_A, excerpt: '', labelIds: [] });
+  assert.equal(cleared.result.removed, true);
+  assert.equal(Object.keys(cleared.data.posts).length, 0);
+  await store.savePost({ id: 'urn:li:activity:2', url: POST_A, excerpt: 'hi', labelIds: [l.id] });
+  const { data } = await store.setPostLabels('urn:li:activity:2', []);
+  assert.equal(Object.keys(data.posts).length, 0);
+});
+
+test('unlabeled posts from older versions are dropped', async () => {
+  const area = memoryArea();
+  area.mem[STORAGE_KEY] = {
+    version: 1,
+    labels: { l1: { id: 'l1', name: 'Keep', createdAt: 1 } },
+    posts: {
+      'urn:li:activity:1': { id: 'urn:li:activity:1', url: POST_A, excerpt: '', labelIds: ['l1'], savedAt: 1 },
+      'urn:li:activity:2': { id: 'urn:li:activity:2', url: POST_A, excerpt: '', labelIds: [], savedAt: 1 },
+    },
+  };
+  const { data } = await createStore(area).createLabel('New');
+  assert.deepEqual(Object.keys(data.posts), ['urn:li:activity:1']);
 });
 
 test('saving refuses bad IDs and missing labels', async () => {
@@ -135,11 +168,12 @@ test('saving refuses bad IDs and missing labels', async () => {
 
 test('posts sort newest saved first', async () => {
   const store = createStore(memoryArea());
-  await store.savePost({ id: 'urn:li:activity:1', url: POST_A, excerpt: 'old', labelIds: [] });
+  const { result: l } = await store.createLabel('Ideas');
+  await store.savePost({ id: 'urn:li:activity:1', url: POST_A, excerpt: 'old', labelIds: [l.id] });
   await new Promise(r => setTimeout(r, 5));
-  const { data } = await store.savePost({ id: 'urn:li:activity:2', url: POST_A, excerpt: 'new', labelIds: [] });
+  const { data } = await store.savePost({ id: 'urn:li:activity:2', url: POST_A, excerpt: 'new', labelIds: [l.id] });
   assert.deepEqual(
-    postsForLabel(data, UNCATEGORIZED_ID).map(p => p.excerpt),
+    postsForLabel(data, l.id).map(p => p.excerpt),
     ['new', 'old'],
   );
 });
@@ -153,9 +187,11 @@ test('backup round trip merges without duplicates', async () => {
     id: 'urn:li:activity:7200000000000000001',
     url: POST_B,
     excerpt: 'B',
-    labelIds: [],
+    labelIds: [l1.id],
   });
   const backup = JSON.parse(JSON.stringify(exportBackup(aData)));
+  // A post with no labels in the file is skipped.
+  backup.posts.push({ url: 'https://www.linkedin.com/feed/update/urn:li:activity:7300000000000000001/', labels: [] });
 
   // Import into a store that already has an overlapping post and a case-variant label.
   const b = createStore(memoryArea());
@@ -164,7 +200,7 @@ test('backup round trip merges without duplicates', async () => {
   await b.savePost({ id: 'urn:li:activity:7212345678901234567', url: POST_A, excerpt: 'A', labelIds: [l3.id] });
 
   const first = await b.importBackup(backup);
-  assert.deepEqual(first.result, { labelsAdded: 1, postsAdded: 1, postsUpdated: 1 });
+  assert.deepEqual(first.result, { labelsAdded: 1, postsAdded: 1, postsUpdated: 1, postsSkipped: 1 });
   const data = first.data;
   assert.equal(Object.keys(data.posts).length, 2);
   assert.equal(Object.keys(data.labels).length, 3);
@@ -173,7 +209,7 @@ test('backup round trip merges without duplicates', async () => {
 
   // Importing the same file again changes nothing.
   const again = await b.importBackup(backup);
-  assert.deepEqual(again.result, { labelsAdded: 0, postsAdded: 0, postsUpdated: 0 });
+  assert.deepEqual(again.result, { labelsAdded: 0, postsAdded: 0, postsUpdated: 0, postsSkipped: 1 });
   assert.equal(Object.keys(again.data.posts).length, 2);
 });
 
@@ -191,10 +227,10 @@ test('backup validation rejects bad files', () => {
   assert.throws(() => validateBackup({ ...base, labels: [{ name: '' }] }), /invalid name/);
   const ok = validateBackup({
     ...base,
-    posts: [{ url: `${POST_A}?utm_source=x`, labels: ['Uncategorized', ' x '], savedAt: '2026-01-01T00:00:00Z' }],
+    posts: [{ url: `${POST_A}?utm_source=x`, labels: ['Notes', ' x '], savedAt: '2026-01-01T00:00:00Z' }],
   });
   assert.equal(ok.posts[0].url, POST_A);
-  assert.deepEqual(ok.posts[0].labels, ['x']);
+  assert.deepEqual(ok.posts[0].labels, ['Notes', 'x']);
 });
 
 test('storage failures surface and do not wedge the queue', async () => {

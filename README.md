@@ -41,9 +41,9 @@ To update, unzip the new version over the same folder and click the reload icon 
 - **Stable ID and link.** The post's URN (for example `urn:li:activity:7212345678901234567`) is the record ID, so saving the same post again updates it instead of creating a duplicate. Query strings and fragments (`utm_source`, `rcm`, `#comments`, …) are stripped from the stored link.
 - **Excerpt.** When you click the toolbar button, a one-off script reads the visible text of that one post: no comments, author info, images or other posts. Line breaks become spaces and the excerpt stops at a word boundary within 160 characters, with `…` if it was cut. It tries LinkedIn's known post-text elements first, then the page's own description of that post, then a layout-based search between the post header and its reactions bar, and finally the tab title (with the author's name removed). If nothing is found (image-only posts, a LinkedIn layout it doesn't recognize), you can still save: the preview reads **Open saved post · saved <date>**, and it fills in automatically the next time you open that post and click Labels. The Save view also offers **Copy page info**, a text-free outline of the page layout (no post text or names) that can be shared to adjust the reader.
 - **If the link can't be identified** (a post-looking page without a usable ID), saving is blocked with an error.
-- **Uncategorized** holds saved posts with no labels. It sits at the bottom of the list, only appears when it has posts, and can't be renamed or deleted.
-- **Labels** are unique ignoring capitalization and surrounding spaces. "Uncategorized" is reserved.
-- **Deleting a label** keeps every saved post. Posts left without any label show up in Uncategorized.
+- **Every saved post has at least one label.** Save stays greyed out until you pick or create one. Untick all of a saved post's labels and the button turns into **Remove from Labels**.
+- **Labels** are unique ignoring capitalization and surrounding spaces.
+- **Deleting a label** asks first and tells you how many posts only have that label. Those posts are removed from Labels; posts with other labels are kept.
 - **Deleted LinkedIn posts.** The saved link and excerpt stay in Labels, but Labels can't restore content LinkedIn has removed or made private.
 
 ## Storage and privacy
@@ -76,7 +76,7 @@ content.js         Label buttons and picker on linkedin.com
 popup.html/.css/.js  Toolbar popup (Save this post, Your labels, label screen, Help)
 lib/post.js        Post URL detection, URL normalization, excerpt rules
 lib/capture.js     Finds posts and their IDs, reads a post's visible text (used by both)
-lib/store.js       Storage, labels, Uncategorized, backup export/import
+lib/store.js       Storage, labels, backup export/import
 icons/             Toolbar icons
 scripts/           build-zip.sh, make-icons.mjs
 tests/             Unit tests and a Chromium end-to-end test (not shipped in the zip)
@@ -102,6 +102,6 @@ The automated tests use fixture pages, so do one pass on real LinkedIn after ins
 2. Click a post's timestamp to open it on its own page, click Labels: the preview should match that post's first lines (not a comment).
 3. Create two labels, save, then reopen the popup: it should say Update with both labels checked.
 4. Open the label and click the preview: the same post should open in a new tab.
-5. Rename and delete labels and confirm the posts move as expected (Uncategorized when no labels remain).
+5. Rename and delete labels and confirm the posts update as expected (posts left with no label are removed).
 6. Quit and restart Chrome: everything should still be there.
 7. Export a backup, import it again: the counts shouldn't change.

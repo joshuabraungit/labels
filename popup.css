@@ -360,10 +360,6 @@ button {
   color: var(--faint);
 }
 
-.label-row.system .name {
-  color: var(--muted);
-}
-
 /* Post rows on the label screen */
 .post-row {
   display: flex;

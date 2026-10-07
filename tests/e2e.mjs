@@ -185,9 +185,6 @@ try {
     await createLabel(p, 'ai');
     await createLabel(p, ' design ');
     assert.match(await p.locator('.error').textContent(), /already have a label called "Design"/);
-    await p.getByLabel('New label name').fill('Uncategorized');
-    await p.getByRole('button', { name: 'Create' }).click();
-    assert.match(await p.locator('.error').textContent(), /reserved/);
     await p.getByLabel('New label name').press('Escape');
     assert.deepEqual(await p.locator('.check-row span').allTextContents(), ['ai', 'Design']);
     assert.equal(await p.locator('.check-row input:checked').count(), 2);
@@ -223,19 +220,21 @@ try {
     await p.close();
   });
 
-  await check('post without readable text saves to Uncategorized with fallback preview', async () => {
+  await check('saving needs a label; post without readable text gets a fallback preview', async () => {
     const p = await openPopup(context, extId, POST_B);
     assert.equal(await p.locator('.preview').textContent(), 'Open saved post');
+    assert.equal(await p.getByRole('button', { name: 'Save', exact: true }).isDisabled(), true);
+    await p.getByText('Pick or create a label to save.').waitFor();
+    await p.locator('.check-row', { hasText: 'ai' }).locator('input').check();
     await p.getByRole('button', { name: 'Save', exact: true }).click();
     await p.getByText('Saved ✓').waitFor();
-    assert.deepEqual(await labelsRows(p), ['ai:0', 'Design:1', 'Uncategorized:1']);
+    assert.deepEqual(await labelsRows(p), ['ai:1', 'Design:1']);
     await shot(p, '4-your-labels');
     await p.close();
   });
 
   await check('errors keep label selections for retry', async () => {
     const p = await openPopup(context, extId, POST_B);
-    await p.locator('.check-row', { hasText: 'ai' }).locator('input').check();
     await p.locator('.check-row', { hasText: 'Design' }).locator('input').check();
     await p.evaluate(() => {
       const area = chrome.storage.local;
@@ -250,8 +249,7 @@ try {
     await p.getByText('Saved ✓').waitFor();
     const data = await storedData(p);
     assert.equal(data.posts['urn:li:activity:7200000000000000001'].labelIds.length, 2);
-    // Put it back in Uncategorized for the next steps.
-    await p.locator('.check-row', { hasText: 'ai' }).locator('input').uncheck();
+    // Back to just "ai" for the next steps.
     await p.locator('.check-row', { hasText: 'Design' }).locator('input').uncheck();
     await p.getByRole('button', { name: 'Update' }).click();
     await p.getByText('Saved ✓').waitFor();
@@ -266,12 +264,7 @@ try {
     await shot(p, '5-label-screen');
     assert.equal(await openedUrl(p, () => p.locator('.post-open').first().click()), POST_A);
     await p.getByRole('button', { name: 'Back' }).click();
-    await p.locator('.label-row', { hasText: 'Uncategorized' }).click();
-    assert.equal(
-      await p.getByRole('button', { name: 'Options', exact: true }).count(),
-      0,
-      'Uncategorized has no options',
-    );
+    await p.locator('.label-row', { hasText: 'ai' }).click();
     assert.equal(await openedUrl(p, () => p.locator('.post-open').first().click()), POST_B);
     await p.close();
   });
@@ -291,11 +284,11 @@ try {
     assert.equal(await p.locator('.header h2').textContent(), 'Zeta design');
     assert.equal(await p.locator('.post-open').count(), 1);
     await p.getByRole('button', { name: 'Back' }).click();
-    assert.deepEqual(await labelsRows(p), ['ai:0', 'Zeta design:1', 'Uncategorized:1']);
+    assert.deepEqual(await labelsRows(p), ['ai:1', 'Zeta design:1']);
     await p.close();
   });
 
-  await check('edit labels from a row; multiple labels; delete moves posts to Uncategorized', async () => {
+  await check('edit labels from a row; deleting a label warns and removes posts with no other label', async () => {
     const p = await openPopup(context, extId, FEED);
     await p.locator('.label-row', { hasText: 'Zeta design' }).click();
     await p.getByRole('button', { name: 'Saved post options' }).click();
@@ -303,36 +296,51 @@ try {
     await p.locator('.check-row', { hasText: 'ai' }).locator('input').check();
     await p.getByRole('button', { name: 'Save', exact: true }).click();
     await p.getByRole('button', { name: 'Back' }).click();
-    assert.deepEqual(await labelsRows(p), ['ai:1', 'Zeta design:1', 'Uncategorized:1']);
+    assert.deepEqual(await labelsRows(p), ['ai:2', 'Zeta design:1']);
 
-    // Deleting "ai" keeps the post under Zeta design.
+    // Deleting "ai" warns about the one post that only has "ai", removes it, and keeps
+    // the post that also has Zeta design.
     await p.locator('.label-row', { hasText: 'ai' }).click();
     await p.getByRole('button', { name: 'Options', exact: true }).click();
     await p.getByRole('menuitem', { name: 'Delete' }).click();
     assert.equal(
       await p.locator('.dialog p').textContent(),
-      'Delete this label? Your saved posts will be kept. Posts without another label will appear in Uncategorized.',
+      'Delete this label? 1 saved post with no other label will be removed from Labels. Posts with other labels are kept.',
     );
     await shot(p, '7-delete-dialog');
     await p.getByRole('button', { name: 'Delete', exact: true }).click();
-    assert.deepEqual(await labelsRows(p), ['Zeta design:1', 'Uncategorized:1']);
+    assert.deepEqual(await labelsRows(p), ['Zeta design:1']);
+    assert.deepEqual(Object.keys((await storedData(p)).posts), ['urn:li:activity:7212345678901234567']);
 
-    // Deleting the last label sends the post to Uncategorized.
+    // A label whose posts all have other labels too: plain confirm.
+    await createLabel(p, 'Spare');
+    await p.locator('.label-row', { hasText: 'Spare' }).click();
+    await p.getByRole('button', { name: 'Options', exact: true }).click();
+    await p.getByRole('menuitem', { name: 'Delete' }).click();
+    assert.equal(await p.locator('.dialog p').textContent(), 'Delete this label? Your saved posts will be kept.');
+    await p.getByRole('button', { name: 'Delete', exact: true }).click();
+
+    // Deleting the last label removes its post.
     await p.locator('.label-row', { hasText: 'Zeta design' }).click();
     await p.getByRole('button', { name: 'Options', exact: true }).click();
     await p.getByRole('menuitem', { name: 'Delete' }).click();
     await p.getByRole('button', { name: 'Delete', exact: true }).click();
-    assert.deepEqual(await labelsRows(p), ['Uncategorized:2']);
-    assert.equal(Object.keys((await storedData(p)).posts).length, 2);
+    assert.deepEqual(await labelsRows(p), []);
+    assert.equal(Object.keys((await storedData(p)).posts).length, 0);
     await p.close();
   });
 
-  await check('assigning a label removes a post from Uncategorized', async () => {
-    const p = await openPopup(context, extId, POST_B);
+  await check('labels new posts again for the next steps', async () => {
+    let p = await openPopup(context, extId, POST_B);
     await createLabel(p, 'Launches');
-    await p.getByRole('button', { name: 'Update' }).click();
+    await p.getByRole('button', { name: 'Save', exact: true }).click();
     await p.getByText('Saved ✓').waitFor();
-    assert.deepEqual(await labelsRows(p), ['Launches:1', 'Uncategorized:1']);
+    await p.close();
+    p = await openPopup(context, extId, POST_A);
+    await p.locator('.check-row', { hasText: 'Launches' }).locator('input').check();
+    await p.getByRole('button', { name: 'Save', exact: true }).click();
+    await p.getByText('Saved ✓').waitFor();
+    assert.deepEqual(await labelsRows(p), ['Launches:2']);
     await p.close();
   });
 
@@ -361,7 +369,7 @@ try {
     await context.close();
     ({ context, extId } = await launch());
     const p = await openPopup(context, extId, FEED);
-    assert.deepEqual(await labelsRows(p), ['Launches:1', 'Uncategorized:1']);
+    assert.deepEqual(await labelsRows(p), ['Launches:2']);
     await p.close();
   });
 
@@ -397,14 +405,34 @@ try {
 
   await check('remove saved post deletes only the record', async () => {
     const p = await openPopup(context, extId, FEED);
-    await p.locator('.label-row', { hasText: 'Uncategorized' }).click();
-    await p.getByRole('button', { name: 'Saved post options' }).click();
+    await p.locator('.label-row', { hasText: 'Launches' }).click();
+    await p.getByRole('button', { name: 'Saved post options' }).first().click();
     await p.getByRole('menuitem', { name: 'Remove saved post' }).click();
     await p.getByRole('button', { name: 'Remove', exact: true }).click();
-    assert.equal(await p.locator('.empty').count(), 1);
+    assert.equal(await p.locator('.post-open').count(), 1);
     await p.getByRole('button', { name: 'Back' }).click();
-    assert.deepEqual(await labelsRows(p), ['Launches:1'], 'empty Uncategorized is hidden');
+    assert.deepEqual(await labelsRows(p), ['Launches:1']);
+    assert.equal(Object.keys((await storedData(p)).labels).length, 1, 'labels are kept');
     await p.close();
+  });
+
+  await check('unticking every label on a saved post offers Remove from Labels', async () => {
+    const list = await openPopup(context, extId, FEED);
+    const remaining = Object.values((await storedData(list)).posts);
+    await list.close();
+    assert.equal(remaining.length, 1);
+    const tab = await context.newPage();
+    await tab.goto(remaining[0].url);
+    const p = await openPopup(context, extId, remaining[0].url);
+    await p.locator('.check-row', { hasText: 'Launches' }).locator('input').uncheck();
+    assert.equal(await p.getByRole('button', { name: 'Update' }).count(), 0);
+    await p.getByRole('button', { name: 'Remove from Labels' }).click();
+    await p.getByText('Removed from Labels.').waitFor();
+    assert.equal(Object.keys((await storedData(p)).posts).length, 0);
+    assert.deepEqual(await labelsRows(p), ['Launches:0']);
+    assert.equal(await p.getByRole('button', { name: 'Save', exact: true }).isDisabled(), true);
+    await p.close();
+    await tab.close();
   });
 
   await check('layout without known class names: captures the post, not header or comments', async () => {
@@ -450,16 +478,17 @@ try {
     assert.match(outline, /container: found-by-class/);
     assert.match(outline, /data-urn="urn:li:activity:<ID>"/);
     assert.ok(!/Image only post|LinkedIn/.test(outline.split('\n').slice(5).join('\n')), 'outline has no page text');
+    await p.locator('.check-row', { hasText: 'Launches' }).locator('input').check();
     await p.getByRole('button', { name: 'Save', exact: true }).click();
     await p.getByText('Saved \u2713').waitFor();
-    await p.locator('.label-row', { hasText: 'Uncategorized' }).click();
+    await p.locator('.label-row', { hasText: 'Launches' }).click();
     assert.match(await p.locator('.post-open').first().textContent(), /^Open saved post \u00B7 saved \w{3} \d{1,2}$/);
     await p.close();
 
     postEHasText = true;
     await tab.reload();
     p = await openPopup(context, extId, POST_E);
-    await p.locator('.label-row', { hasText: 'Uncategorized' }).click();
+    await p.locator('.label-row', { hasText: 'Launches' }).click();
     assert.ok((await p.locator('.post-open').first().textContent()).startsWith('Contrary to seemingly'));
     await p.close();
     await tab.close();
@@ -532,9 +561,9 @@ try {
     await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
     assert.equal(await panel(feed).getByRole('button', { name: 'Saved \u2713' }).isDisabled(), true);
     assert.equal(await panel(feed).locator('label', { hasText: 'Feed picks' }).locator('input').isChecked(), true);
-    // Any change turns it back into Update; undoing the change goes back to Saved.
+    // Unticking its only label offers to remove it; undoing the change goes back to Saved.
     await panel(feed).locator('label', { hasText: 'Feed picks' }).locator('input').uncheck();
-    await panel(feed).getByRole('button', { name: 'Update' }).waitFor();
+    await panel(feed).getByRole('button', { name: 'Remove from Labels' }).waitFor();
     await panel(feed).locator('label', { hasText: 'Feed picks' }).locator('input').check();
     await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
     await feed.mouse.click(5, 880);
@@ -565,7 +594,7 @@ try {
     // Remove the post from this label, then undo.
     await panel(feed).getByRole('button', { name: 'Remove from Feed picks' }).click();
     await panel(feed).locator('.undo').waitFor();
-    // It was the post's only label, so the saved post is deleted (not moved to Uncategorized).
+    // It was the post's only label, so the saved post is deleted.
     assert.equal(await panel(feed).locator('.undo span').textContent(), 'Deleted from Labels');
     assert.equal(await rows.count(), 0, 'gone from the list');
     await feedButton(feed, ID1).getByText('Label', { exact: true }).waitFor();
@@ -604,12 +633,17 @@ try {
     await panel(feed).waitFor({ state: 'detached' });
   });
 
-  await check('feed: post found only by its timestamp link saves to Uncategorized; no duplicates', async () => {
+  await check('feed: post found only by its timestamp link; saving needs a label; no duplicates', async () => {
     await feedButton(feed, ID2).click();
     assert.equal(
       await panel(feed).locator('.preview').textContent(),
       'Feed post two is identified only by its timestamp link, nothing else at all.',
     );
+    assert.equal(await panel(feed).getByRole('button', { name: 'Save', exact: true }).isDisabled(), true);
+    await panel(feed).getByText('Pick or create a label to save.').waitFor();
+    await panel(feed).getByLabel('Find or create a label').press('Control+Enter');
+    await panel(feed).locator('.error', { hasText: 'Pick or create a label first.' }).waitFor();
+    await panel(feed).locator('label', { hasText: 'Launches' }).locator('input').check();
     await panel(feed).getByRole('button', { name: 'Save', exact: true }).click();
     await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
     // Saving the same post again (keyboard save) doesn't create a second record.
@@ -619,8 +653,11 @@ try {
     const p = await openPopup(context, extId, FEED);
     const stored = await storedData(p);
     assert.equal(Object.keys(stored.posts).filter(id => id === ID2).length, 1);
-    assert.deepEqual(stored.posts[ID2].labelIds, []);
-    await p.locator('.label-row', { hasText: 'Uncategorized' }).click();
+    assert.deepEqual(
+      stored.posts[ID2].labelIds.map(id => stored.labels[id].name),
+      ['Launches'],
+    );
+    await p.locator('.label-row', { hasText: 'Launches' }).click();
     assert.ok(
       (await p.locator('.post-open').allTextContents()).includes(
         'Feed post two is identified only by its timestamp link, nothing else at all.',
@@ -692,6 +729,7 @@ try {
       await panel(sdui).locator('.preview').textContent(),
       'SDUI post one: here is one of the best cold DMs I have ever received. He told me exactly who he is.',
     );
+    await panel(sdui).locator('label', { hasText: 'Launches' }).locator('input').check();
     await panel(sdui).getByRole('button', { name: 'Save', exact: true }).click();
     await panel(sdui).getByText('Saved \u2713').waitFor();
     await sdui.keyboard.press('Escape');

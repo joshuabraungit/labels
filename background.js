@@ -1,15 +1,13 @@
 // Handles storage for the feed buttons (content.js), so labels and saved posts are read
 // and written by the same code the toolbar popup uses.
 import { classifyUrl, makeExcerpt } from './lib/post.js';
-import { createStore, LabelsError, labelsWithCounts, postsForLabel, UNCATEGORIZED_ID } from './lib/store.js';
+import { createStore, LabelsError, labelsWithCounts, postsForLabel } from './lib/store.js';
 
 const store = createStore(chrome.storage.local);
 
 function view(data, postId) {
   return {
-    labels: labelsWithCounts(data)
-      .filter(l => l.id !== UNCATEGORIZED_ID)
-      .map(l => ({ id: l.id, name: l.name, count: l.count })),
+    labels: labelsWithCounts(data).map(l => ({ id: l.id, name: l.name, count: l.count })),
     post: postId ? (data.posts[postId] ?? null) : null,
     savedIds: Object.keys(data.posts),
   };
@@ -26,7 +24,6 @@ const handlers = {
   },
 
   // Takes a post out of one label (or puts it back, for Undo). Other labels are untouched;
-  // a post left with no labels shows under Uncategorized.
   // Removing a post's last label deletes the saved post (returned as `deleted`, so Undo
   // can restore it exactly via `restore`).
   async setInLabel({ postId, labelId, inLabel, currentPostId, restore }) {
@@ -66,7 +63,7 @@ const handlers = {
       excerpt: makeExcerpt(text),
       labelIds,
     });
-    return { ...view(data, postId), created: result.created };
+    return { ...view(data, postId), created: result.created, removed: Boolean(result.removed) };
   },
 };
 

@@ -69,6 +69,8 @@
     .btn { border: 1px solid #ececf0; background: #fff; border-radius: 8px; padding: 8px 14px; font-weight: 500; font-size: 14px; color: #1c1b22; }
     .btn.primary { background: #6d4fc2; border-color: #6d4fc2; color: #fff; }
     .btn.primary:hover { background: #5c40ab; }
+    .btn.danger { background: #b4262c; border-color: #b4262c; color: #fff; }
+    .btn.danger:hover { background: #9a1f25; }
     .btn.block { width: 100%; }
     .btn:disabled { opacity: 0.55; cursor: default; }
     .btn.saved, .btn.saved:disabled { opacity: 1; background: #edf7f0; border-color: #cfe8d7; color: #2f7d4f; font-weight: 600; }
@@ -607,41 +609,58 @@
             }),
           )
         : h('p', { class: 'hint' }, 'No labels yet. Type a name above to create one.'),
-      h('p', { class: 'hint' }, 'Posts without a label go to Uncategorized.'),
+      !p.selection.size && !existing && !p.closing && h('p', { class: 'hint' }, 'Pick or create a label to save.'),
       p.error && h('div', { class: 'error', role: 'alert' }, p.error),
       p.closing
         ? h(
             'div',
             { class: 'confirm', role: 'status' },
-            h('span', { class: 'confirm-title' }, 'Saved \u2713'),
-            h('span', { class: 'confirm-labels' }, p.closing),
+            h('span', { class: 'confirm-title' }, p.closing.title),
+            p.closing.labels && h('span', { class: 'confirm-labels' }, p.closing.labels),
           )
-        : unchanged(p)
-          ? // Saved and nothing changed since: say so instead of offering a button with nothing to do.
-            h(
-              'button',
-              { class: 'btn saved block', type: 'button', disabled: true, 'data-focus': 'save' },
-              'Saved \u2713',
-            )
-          : h(
-              'button',
-              { class: 'btn primary block', type: 'button', disabled: p.saving, 'data-focus': 'save', onClick: save },
-              existing ? 'Update' : 'Save',
-            ),
+        : !p.selection.size
+          ? existing
+            ? // Unticking every label on a saved post removes it from Labels.
+              h(
+                'button',
+                { class: 'btn danger block', type: 'button', disabled: p.saving, 'data-focus': 'save', onClick: save },
+                'Remove from Labels',
+              )
+            : h('button', { class: 'btn primary block', type: 'button', disabled: true, 'data-focus': 'save' }, 'Save')
+          : unchanged(p)
+            ? // Saved and nothing changed since: say so instead of offering a button with nothing to do.
+              h(
+                'button',
+                { class: 'btn saved block', type: 'button', disabled: true, 'data-focus': 'save' },
+                'Saved \u2713',
+              )
+            : h(
+                'button',
+                { class: 'btn primary block', type: 'button', disabled: p.saving, 'data-focus': 'save', onClick: save },
+                existing ? 'Update' : 'Save',
+              ),
+      !p.closing && p.status === 'Removed from Labels' && h('div', { class: 'status', role: 'status' }, p.status),
     );
   }
 
-  // Keyboard save: save, close, and confirm with a short message on the page.
   // Keyboard save: show what was saved for a moment, then fade out. Moving the mouse over
   // the picker or pressing a key (other than Esc) keeps it open.
   const CONFIRM_MS = 1500;
   async function saveAndClose() {
     const p = panel;
+    if (!p.selection.size && !p.post) {
+      p.error = 'Pick or create a label first.';
+      p.focusKey = 'query';
+      renderPanel();
+      return;
+    }
     const ok = await save();
     if (!ok || panel !== p) return;
     const names = p.labels.filter(l => p.selection.has(l.id)).map(l => l.name);
-    p.closing = names.length ? names.join(', ') : 'Uncategorized';
-    p.status = 'Saved \u2713';
+    p.closing = names.length
+      ? { title: 'Saved \u2713', labels: names.join(', ') }
+      : { title: 'Removed from Labels', labels: '' };
+    p.status = names.length ? 'Saved \u2713' : '';
     p.focusKey = 'query';
     renderPanel();
     clearTimeout(p.closeTimer);
@@ -833,7 +852,7 @@
       if (panel !== p) return false;
       p.labels = state.labels;
       p.post = state.post;
-      p.status = 'Saved ✓';
+      p.status = state.removed ? 'Removed from Labels' : 'Saved ✓';
       savedIds = new Set(state.savedIds);
       buttons.forEach((_, id) => paintButton(id));
     } catch (err) {

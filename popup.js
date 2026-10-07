@@ -8,8 +8,8 @@ import {
   LabelsError,
   postsForLabel,
   sortedLabels,
+  postsOnlyIn,
   STORAGE_KEY,
-  UNCATEGORIZED_ID,
 } from './lib/store.js';
 
 const store = createStore(chrome.storage.local);
@@ -28,6 +28,7 @@ async function runCapture(tabId, postId, mode) {
   return injection?.result;
 }
 const FALLBACK_PREVIEW = 'Open saved post';
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 const state = {
   data: emptyData(),
@@ -283,15 +284,27 @@ function renderSave() {
       clearStatus();
     }),
     renderChecklist(state.selection, clearStatus),
-    h('p', { class: 'hint' }, 'Posts without a label go to Uncategorized.'),
+    !state.selection.size && !existing && h('p', { class: 'hint' }, 'Pick or create a label to save.'),
     state.saveError && h('div', { class: 'error', role: 'alert' }, state.saveError),
+    state.saveStatus === 'Removed' && h('p', { class: 'meta', role: 'status' }, 'Removed from Labels.'),
     unchanged
       ? h('button', { class: 'btn saved block', disabled: true, 'data-focus': 'save' }, 'Saved \u2713')
-      : h(
-          'button',
-          { class: 'btn primary block', disabled: state.saving, 'data-focus': 'save', onClick: onSave },
-          existing ? 'Update' : 'Save',
-        ),
+      : !state.selection.size && existing
+        ? h(
+            'button',
+            { class: 'btn danger block', disabled: state.saving, 'data-focus': 'save', onClick: onSave },
+            'Remove from Labels',
+          )
+        : h(
+            'button',
+            {
+              class: 'btn primary block',
+              disabled: state.saving || !state.selection.size,
+              'data-focus': 'save',
+              onClick: onSave,
+            },
+            existing ? 'Update' : 'Save',
+          ),
   );
 }
 
@@ -328,14 +341,15 @@ async function onSave() {
   state.saveStatus = '';
   render();
   try {
-    const { data } = await store.savePost({
+    const { data, result } = await store.savePost({
       id: page.id,
       url: page.url,
       excerpt: page.excerpt,
       labelIds: [...state.selection],
     });
     state.data = data;
-    state.saveStatus = 'Saved ✓';
+    state.saveStatus = result.removed ? 'Removed' : 'Saved ✓';
+    if (result.removed) state.wasSaved = false;
   } catch (err) {
     // Keep the selection so the user can retry.
     state.saveError = errorMessage(err);
@@ -373,8 +387,7 @@ function renderTip() {
 }
 
 function renderLabels({ compact = false } = {}) {
-  // Uncategorized only shows when it holds something.
-  const rows = labelsWithCounts(state.data).filter(row => !row.system || row.count > 0);
+  const rows = labelsWithCounts(state.data);
   const nothingSaved = Object.keys(state.data.posts).length === 0;
   return h(
     'div',
@@ -395,7 +408,7 @@ function renderLabels({ compact = false } = {}) {
             h(
               'button',
               {
-                class: `label-row${row.system ? ' system' : ''}`,
+                class: 'label-row',
                 'data-focus': `label-${row.id}`,
                 onClick: () => go('label', { labelId: row.id }),
               },
@@ -418,7 +431,6 @@ function renderLabel() {
     state.view = 'labels';
     return renderHome();
   }
-  const system = state.labelId === UNCATEGORIZED_ID;
   const posts = postsForLabel(state.data, state.labelId);
 
   return h(
@@ -429,20 +441,19 @@ function renderLabel() {
       { class: 'header' },
       h('button', { class: 'icon-btn back', 'aria-label': 'Back', title: 'Back', onClick: () => go('labels') }, '‹'),
       h('h2', { title: name }, name),
-      !system &&
-        h(
-          'button',
-          {
-            class: 'icon-btn',
-            'aria-label': 'Options',
-            title: 'Options',
-            'aria-haspopup': 'menu',
-            'aria-expanded': String(state.menu?.kind === 'label'),
-            'data-focus': 'label-options',
-            onClick: e => toggleMenu(e, { kind: 'label' }),
-          },
-          '•••',
-        ),
+      h(
+        'button',
+        {
+          class: 'icon-btn',
+          'aria-label': 'Options',
+          title: 'Options',
+          'aria-haspopup': 'menu',
+          'aria-expanded': String(state.menu?.kind === 'label'),
+          'data-focus': 'label-options',
+          onClick: e => toggleMenu(e, { kind: 'label' }),
+        },
+        '•••',
+      ),
     ),
     posts.length
       ? h(
@@ -480,7 +491,7 @@ function renderLabel() {
             ),
           ),
         )
-      : h('p', { class: 'empty' }, system ? 'No unlabeled saved posts.' : 'No saved posts with this label yet.'),
+      : h('p', { class: 'empty' }, 'No saved posts with this label yet.'),
   );
 }
 
@@ -513,9 +524,11 @@ function renderEdit() {
     renderPreview(post.excerpt),
     renderNewLabel(label => state.editSelection.add(label.id)),
     renderChecklist(state.editSelection),
-    h('p', { class: 'hint' }, 'Posts without a label go to Uncategorized.'),
+    !state.editSelection.size && h('p', { class: 'hint' }, 'No labels ticked, so this removes the post from Labels.'),
     state.editError && h('div', { class: 'error', role: 'alert' }, state.editError),
-    h('button', { class: 'btn primary block', 'data-focus': 'edit-save', onClick: save }, 'Save'),
+    state.editSelection.size
+      ? h('button', { class: 'btn primary block', 'data-focus': 'edit-save', onClick: save }, 'Save')
+      : h('button', { class: 'btn danger block', 'data-focus': 'edit-save', onClick: save }, 'Remove from Labels'),
   );
 }
 
@@ -712,10 +725,13 @@ function renderDialog() {
     title = 'Delete label';
     confirmText = 'Delete';
     confirmClass = 'btn danger';
+    const only = postsOnlyIn(state.data, state.labelId);
     body = h(
       'p',
       null,
-      'Delete this label? Your saved posts will be kept. Posts without another label will appear in Uncategorized.',
+      only
+        ? `Delete this label? ${plural(only, 'saved post')} with no other label will be removed from Labels. Posts with other labels are kept.`
+        : 'Delete this label? Your saved posts will be kept.',
     );
     onConfirm = async () => {
       try {
@@ -808,8 +824,7 @@ importInput.addEventListener('change', async () => {
     }
     const { data, result } = await store.importBackup(parsed);
     state.data = data;
-    const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-    state.helpMessage = `Imported ${plural(result.postsAdded, 'new post')}, updated ${plural(result.postsUpdated, 'post')}, added ${plural(result.labelsAdded, 'label')}.`;
+    state.helpMessage = `Imported ${plural(result.postsAdded, 'new post')}, updated ${plural(result.postsUpdated, 'post')}, added ${plural(result.labelsAdded, 'label')}.${result.postsSkipped ? ` Skipped ${plural(result.postsSkipped, 'post')} with no labels.` : ''}`;
   } catch (err) {
     state.helpError = errorMessage(err);
   }

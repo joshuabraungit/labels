@@ -67,7 +67,7 @@ const posts = [
   post(7, 'Hiring lesson: ask candidates what they changed their mind about this year.', ['l_hire'], 4),
   post(8, 'A simple way to use AI for account research without sounding like a robot in your outreach.', ['l_ai'], 5),
   post(9, 'Write like you talk, then cut every sentence that doesn’t earn its place.', ['l_write'], 8),
-  post(10, 'Open saved post placeholder', [], 11),
+  post(10, 'Open saved post placeholder', ['l_swipe'], 11),
 ];
 posts[9].excerpt = '';
 const data = {
@@ -171,7 +171,7 @@ try {
     800,
     slide(
       'Your posts, sorted your way',
-      'Every label in one list, A to Z, with a count of saved posts. Posts without a label land in Uncategorized.',
+      'Every label in one list, A to Z, with a count of saved posts. Click one to see its posts.',
       `<img src="${labelsView}" style="width:380px">`,
     ),
   );
@@ -191,7 +191,7 @@ try {
     800,
     slide(
       'Rename, delete, tidy up',
-      'Change a post’s labels anytime. Renaming or deleting a label never deletes your saved posts.',
+      'Change a post’s labels anytime, rename a label, or delete the ones you’re done with.',
       `<img src="${options}" style="width:380px">`,
     ),
   );
