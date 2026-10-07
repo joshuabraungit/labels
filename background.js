@@ -15,13 +15,24 @@ function view(data, postId) {
   };
 }
 
+function labelPostRows(data, labelId) {
+  return postsForLabel(data, labelId).map(p => ({ id: p.id, url: p.url, excerpt: p.excerpt, savedAt: p.savedAt }));
+}
+
 const handlers = {
   // A label's saved posts, newest first, for the list inside the picker.
   async labelPosts({ labelId }) {
-    const data = await store.load();
-    return {
-      posts: postsForLabel(data, labelId).map(p => ({ id: p.id, url: p.url, excerpt: p.excerpt, savedAt: p.savedAt })),
-    };
+    return { posts: labelPostRows(await store.load(), labelId) };
+  },
+
+  // Takes a post out of one label (or puts it back, for Undo). Other labels are untouched;
+  // a post left with no labels shows under Uncategorized.
+  async setInLabel({ postId, labelId, inLabel, currentPostId }) {
+    const post = (await store.load()).posts[postId];
+    if (!post) throw new LabelsError('This saved post no longer exists.');
+    const labelIds = inLabel ? [...new Set([...post.labelIds, labelId])] : post.labelIds.filter(id => id !== labelId);
+    const { data } = await store.setPostLabels(postId, labelIds);
+    return { ...view(data, currentPostId), posts: labelPostRows(data, labelId) };
   },
 
   async getState({ postId }) {

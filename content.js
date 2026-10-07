@@ -96,13 +96,26 @@
     .label-view .head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .posts { list-style: none; margin: 4px -16px 0; padding: 0; overflow-y: auto;
       max-height: clamp(200px, calc(100vh - 200px), 460px); border-top: 1px solid #ececf0; }
+    .posts li { display: flex; align-items: flex-start; }
     .posts li + li { border-top: 1px solid #ececf0; }
-    .posts a { display: block; padding: 11px 16px; color: #1c1b22; text-decoration: none; line-height: 1.5; }
+    .posts a { flex: 1; min-width: 0; display: block; padding: 11px 16px; color: #1c1b22; text-decoration: none; line-height: 1.5; }
     .posts a:hover { background: #f6f5f9; }
     .posts a:hover .excerpt { color: #5c40ab; }
     .posts .excerpt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
       overflow-wrap: anywhere; }
     .posts .excerpt.fallback { color: #6b6a75; font-style: italic; }
+    .posts .remove {
+      flex: none; margin: 8px 8px 0 0; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent;
+      color: #9a99a3; font-size: 18px; line-height: 1; opacity: 0.6;
+    }
+    .posts li:hover .remove, .posts .remove:focus-visible { opacity: 1; }
+    .posts .remove:hover { background: #fdf0f0; color: #b4262c; }
+    .undo {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 0;
+      padding: 8px 12px; border-radius: 8px; background: #1c1b22; color: #fff; font-size: 13px;
+    }
+    .undo button { border: 0; background: transparent; color: #c9b8ff; font-weight: 700; font-size: 13px; padding: 2px 4px; }
+    .undo button:hover { color: #fff; text-decoration: underline; }
     .this-post { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 999px; background: #f2eefb;
       color: #5c40ab; font-size: 11px; font-weight: 600; }
     .panel.fading { opacity: 0; }
@@ -736,11 +749,65 @@
                   ),
                   post.id === p.postId && h('span', { class: 'this-post' }, 'This post'),
                 ),
+                h(
+                  'button',
+                  {
+                    class: 'remove',
+                    type: 'button',
+                    title: `Remove from ${v.name}`,
+                    'aria-label': `Remove from ${v.name}`,
+                    'data-focus': `remove-${post.id}`,
+                    onClick: () => setInLabel(post, false),
+                  },
+                  '\u00D7',
+                ),
               ),
             ),
           )
-        : h('p', { class: 'hint' }, 'No saved posts with this label yet.'),
+        : h('p', { class: 'hint' }, 'No saved posts with this label.'),
+      v.undo &&
+        h(
+          'div',
+          { class: 'undo', role: 'status' },
+          h('span', null, `Removed from ${v.name}`),
+          h('button', { type: 'button', 'data-focus': 'undo', onClick: () => setInLabel(v.undo, true) }, 'Undo'),
+        ),
+      p.error && h('div', { class: 'error', role: 'alert' }, p.error),
     );
+  }
+
+  // Removes a post from the label being viewed (inLabel = false), or puts it back (Undo).
+  async function setInLabel(post, inLabel) {
+    const p = panel;
+    const v = p.viewLabel;
+    p.error = '';
+    try {
+      const state = await send('setInLabel', { postId: post.id, labelId: v.id, inLabel, currentPostId: p.postId });
+      if (panel !== p || p.viewLabel !== v) return;
+      v.posts = state.posts;
+      p.labels = state.labels;
+      savedIds = new Set(state.savedIds);
+      if (post.id === p.postId) {
+        // Keep the picker in step with what's saved for the post being labeled.
+        p.post = state.post;
+        if (inLabel) p.selection.add(v.id);
+        else p.selection.delete(v.id);
+      }
+      clearTimeout(v.undoTimer);
+      v.undo = inLabel ? null : post;
+      p.focusKey = inLabel ? `remove-${post.id}` : 'undo';
+      if (!inLabel) {
+        v.undoTimer = setTimeout(() => {
+          if (panel === p && p.viewLabel === v && v.undo === post) {
+            v.undo = null;
+            renderPanel();
+          }
+        }, 6000);
+      }
+    } catch (err) {
+      p.error = err.message;
+    }
+    renderPanel();
   }
 
   async function save() {

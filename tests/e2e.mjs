@@ -562,6 +562,30 @@ try {
     assert.ok((await rows.first().textContent()).startsWith('Feed post one'));
     assert.equal(await rows.first().getAttribute('href'), `https://www.linkedin.com/feed/update/${ID1}/`);
     assert.match(await rows.first().textContent(), /This post$/, 'marks the post being labeled');
+    // Remove the post from this label, then undo.
+    await panel(feed).getByRole('button', { name: 'Remove from Feed picks' }).click();
+    await panel(feed).locator('.undo').waitFor();
+    assert.equal(await panel(feed).locator('.undo span').textContent(), 'Removed from Feed picks');
+    assert.equal(await rows.count(), 0, 'gone from the list');
+    await panel(feed).getByRole('button', { name: 'Back' }).click();
+    assert.equal(
+      await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('input').isChecked(),
+      false,
+      'unticked in the picker after removing',
+    );
+    assert.equal(await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count').count(), 0, 'count gone');
+    await panel(feed).locator('li', { hasText: 'Launches' }).locator('.count').click();
+    await panel(feed).getByRole('button', { name: 'Back' }).click();
+    // Re-add through the picker, then remove + Undo inside the label view.
+    await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('input').check();
+    await panel(feed).getByRole('button', { name: 'Update' }).click();
+    await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
+    await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count').click();
+    await panel(feed).getByRole('button', { name: 'Remove from Feed picks' }).click();
+    await panel(feed).getByRole('button', { name: 'Undo' }).click();
+    await panel(feed).locator('.posts a').first().waitFor();
+    assert.equal(await panel(feed).locator('.undo').count(), 0);
+    assert.equal(await rows.count(), 1, 'back after Undo');
     // Esc (or Back) returns to the picker as it was, without ticking anything.
     await feed.keyboard.press('Escape');
     await panel(feed).locator('.label-view').waitFor({ state: 'detached' });
