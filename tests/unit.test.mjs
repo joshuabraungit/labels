@@ -220,3 +220,24 @@ test('decodes LinkedIn feed thread keys into post URNs', async () => {
   assert.equal(decode('not-a-token'), null);
   assert.equal(decode('CgIIAg'), null, 'implausible IDs are rejected');
 });
+
+test('restorePost puts a deleted post back exactly, dropping labels that no longer exist', async () => {
+  const store = createStore(memoryArea());
+  const { result: a } = await store.createLabel('A');
+  const { result: b } = await store.createLabel('B');
+  const { data: before } = await store.savePost({
+    id: 'urn:li:activity:1',
+    url: POST_A,
+    excerpt: 'hello',
+    labelIds: [a.id, b.id],
+  });
+  const record = structuredClone(before.posts['urn:li:activity:1']);
+  await store.removePost('urn:li:activity:1');
+  await store.deleteLabel(b.id);
+  const { data } = await store.restorePost(record);
+  const post = data.posts['urn:li:activity:1'];
+  assert.deepEqual(post.labelIds, [a.id]);
+  assert.equal(post.excerpt, 'hello');
+  assert.equal(post.savedAt, record.savedAt);
+  await assert.rejects(store.restorePost({ id: 'nope', url: POST_A }), /couldn.t be restored/);
+});

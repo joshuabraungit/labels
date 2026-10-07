@@ -769,36 +769,47 @@
         h(
           'div',
           { class: 'undo', role: 'status' },
-          h('span', null, `Removed from ${v.name}`),
-          h('button', { type: 'button', 'data-focus': 'undo', onClick: () => setInLabel(v.undo, true) }, 'Undo'),
+          h('span', null, v.undo.deleted ? 'Deleted from Labels' : `Removed from ${v.name}`),
+          h(
+            'button',
+            { type: 'button', 'data-focus': 'undo', onClick: () => setInLabel(v.undo.post, true, v.undo.deleted) },
+            'Undo',
+          ),
         ),
       p.error && h('div', { class: 'error', role: 'alert' }, p.error),
     );
   }
 
   // Removes a post from the label being viewed (inLabel = false), or puts it back (Undo).
-  async function setInLabel(post, inLabel) {
+  // If it was the post's last label, the saved post is deleted; `restore` brings it back.
+  async function setInLabel(post, inLabel, restore) {
     const p = panel;
     const v = p.viewLabel;
     p.error = '';
     try {
-      const state = await send('setInLabel', { postId: post.id, labelId: v.id, inLabel, currentPostId: p.postId });
+      const state = await send('setInLabel', {
+        postId: post.id,
+        labelId: v.id,
+        inLabel,
+        currentPostId: p.postId,
+        restore: restore || undefined,
+      });
       if (panel !== p || p.viewLabel !== v) return;
       v.posts = state.posts;
       p.labels = state.labels;
       savedIds = new Set(state.savedIds);
+      buttons.forEach((_, id) => paintButton(id));
       if (post.id === p.postId) {
         // Keep the picker in step with what's saved for the post being labeled.
         p.post = state.post;
-        if (inLabel) p.selection.add(v.id);
-        else p.selection.delete(v.id);
+        p.selection = new Set(state.post?.labelIds ?? []);
       }
       clearTimeout(v.undoTimer);
-      v.undo = inLabel ? null : post;
+      v.undo = inLabel ? null : { post, deleted: state.deleted || null };
       p.focusKey = inLabel ? `remove-${post.id}` : 'undo';
       if (!inLabel) {
         v.undoTimer = setTimeout(() => {
-          if (panel === p && p.viewLabel === v && v.undo === post) {
+          if (panel === p && p.viewLabel === v && v.undo?.post === post) {
             v.undo = null;
             renderPanel();
           }

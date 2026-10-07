@@ -4,7 +4,7 @@ A small Chrome extension (Manifest V3) for saving LinkedIn posts with your own l
 
 **Save from the feed:** click the purple **Label** button under any post → pick labels → Save.
 
-In the picker, labels that already have posts show a count like `3 ›`. Click it to see that label's posts right in the picker (click one to open the original post in a new tab); Each row has a **✕** that removes the post from that label (its other labels stay; with none left it goes to Uncategorized), with **Undo** for a few seconds. **‹ Back** or **Esc** returns to the picker. Clicking the label name still just ticks the box.
+In the picker, labels that already have posts show a count like `3 ›`. Click it to see that label's posts right in the picker (click one to open the original post in a new tab); Each row has a **✕** that removes the post from that label. Its other labels stay; if it was the post's last label, the saved post is deleted. **Undo** (for a few seconds) restores it exactly. **‹ Back** or **Esc** returns to the picker. Clicking the label name still just ticks the box.
 
 **Posts you saved with LinkedIn's own Save button:** open LinkedIn's Saved posts page (`linkedin.com/my-items/saved-posts/`). Each post there gets a Label button next to its ••• menu, so you can work through your existing saves and label them one at a time. Labels doesn't import them automatically and doesn't change LinkedIn's saved list.
 
@@ -20,7 +20,7 @@ Labels uses its own save action. It doesn't touch LinkedIn's Save button or Save
 
 ## Install (unpacked)
 
-1. Download `release/labels-extension-1.4.2.zip` and unzip it. You should get a folder with `manifest.json` at the top.
+1. Download `release/labels-extension-1.4.3.zip` and unzip it. You should get a folder with `manifest.json` at the top.
 2. In Chrome, go to `chrome://extensions`.
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and pick the unzipped folder.
