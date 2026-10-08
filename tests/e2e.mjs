@@ -418,7 +418,7 @@ try {
   await check('long posts expand and collapse', async () => {
     const p = await openLibrary(context, extId);
     const text = (await storedData(p)).posts[ID_A].text;
-    const long = text.length > 280 || text.split('\n').length > 4;
+    const long = text.length > 200 || text.split('\n').length > 4;
     const a = card(p, ID_A);
     assert.equal(await a.getByRole('button', { name: 'Expand' }).count(), long ? 1 : 0);
     if (long) {

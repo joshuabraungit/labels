@@ -416,7 +416,7 @@ function renderEditPopover(post) {
 function renderCard(post) {
   const expanded = state.expanded.has(post.id);
   const body = post.text || post.excerpt;
-  const long = body.length > 280 || body.split('\n').length > 4;
+  const long = body.length > 200 || body.split('\n').length > 4;
   const labels = post.labelIds
     .map(id => state.data.labels[id])
     .filter(Boolean)
@@ -482,6 +482,8 @@ function renderCard(post) {
         'button',
         {
           class: 'action',
+          'aria-label': 'Edit labels',
+          title: 'Edit labels',
           'aria-expanded': String(state.editing === post.id),
           onClick: e => {
             e.stopPropagation();
@@ -492,7 +494,7 @@ function renderCard(post) {
           },
         },
         icon(ICONS.tag),
-        'Edit labels',
+        'Labels',
       ),
       h(
         'button',

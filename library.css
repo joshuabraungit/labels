@@ -298,7 +298,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 16px;
-  max-width: 820px;
+  max-width: 1400px;
   margin: -20px auto 0;
   padding: 20px 0 16px;
   background: var(--bg);
@@ -339,15 +339,15 @@ kbd {
 }
 
 .list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
-  max-width: 820px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
 .empty {
-  max-width: 820px;
+  max-width: 1400px;
   margin: 40px auto;
   color: var(--muted);
   text-align: center;
@@ -672,4 +672,66 @@ kbd {
 
 .popover .field {
   width: 100%;
+}
+
+/* Cards in a grid: compact sizes */
+.card-body {
+  padding: 16px 16px 12px;
+}
+
+.author {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+}
+
+.who .name {
+  font-size: 14px;
+}
+
+.who .headline {
+  font-size: 12px;
+}
+
+.post-image {
+  height: 170px;
+  max-height: none;
+  margin-bottom: 12px;
+}
+
+.text {
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.text.clamped {
+  -webkit-line-clamp: 5;
+}
+
+.chips {
+  margin-top: 12px;
+}
+
+.card-actions {
+  gap: 2px;
+  padding: 6px 8px;
+}
+
+.action {
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
+/* Same height per row; actions sit along the bottom */
+.card {
+  display: flex;
+  flex-direction: column;
+}
+
+.card-body {
+  flex: 1;
 }

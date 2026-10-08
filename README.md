@@ -13,7 +13,7 @@ Every saved post has at least one label. Deleting a label warns you first and sa
 
 ## Install (unpacked)
 
-1. Download `release/labels-extension-3.0.0.zip` and unzip it. You should get a folder with `manifest.json` at the top.
+1. Download `release/labels-extension-3.1.0.zip` and unzip it. You should get a folder with `manifest.json` at the top.
 2. In Chrome, go to `chrome://extensions` and turn on **Developer mode** (top right).
 3. Click **Load unpacked** and pick the unzipped folder.
 4. Click the puzzle icon in the toolbar and pin **Labels** so the Library is one click away.

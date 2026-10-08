@@ -146,7 +146,7 @@ try {
 
   // The Library.
   const page = await context.newPage();
-  await page.setViewportSize({ width: 1180, height: 760 });
+  await page.setViewportSize({ width: 1440, height: 860 });
   await page.goto(`chrome-extension://${extId}/library.html`);
   await page.evaluate(d => chrome.storage.local.set({ 'labels.data.v1': d }), data);
   await page.reload();
