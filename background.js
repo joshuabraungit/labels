@@ -11,7 +11,6 @@ function view(data, postId) {
       id: l.id,
       name: l.name,
       count: l.count,
-      color: data.labels[l.id]?.color ?? null,
     })),
     post: postId ? (data.posts[postId] ?? null) : null,
     savedIds: Object.keys(data.posts),
@@ -29,26 +28,15 @@ function view(data, postId) {
 }
 
 const handlers = {
-  // Adds labels to several posts at once (the Saved posts page's "select posts").
-  async labelMany({ posts, labelIds }) {
-    const records = (Array.isArray(posts) ? posts : []).flatMap(({ postId, text }) => {
-      const page = classifyUrl(`https://www.linkedin.com/feed/update/${postId}/`);
-      if (page.kind !== 'post' || page.id !== postId) return [];
-      return [{ id: page.id, url: page.url, excerpt: makeExcerpt(text), text }];
-    });
-    const { data, result } = await store.labelMany(records, labelIds);
-    return { ...view(data, null), ...result };
-  },
-
   // The picker's "Library" link.
-  async openLibrary(message, sender) {
-    await openLibrary({ tabId: sender.tab?.id, windowId: sender.tab?.windowId });
+  async openLibrary() {
+    await openLibrary();
     return {};
   },
 
   // Adds the full text (and a preview, if missing) to an already-saved post. Never shortens.
-  async fillText({ postId, text }) {
-    await store.fillExcerpt(postId, makeExcerpt(text), text);
+  async fillText({ postId, text, meta }) {
+    await store.fillExcerpt(postId, makeExcerpt(text), text, meta);
     return {};
   },
 
@@ -61,7 +49,7 @@ const handlers = {
     return { ...view(data, postId), created: result };
   },
 
-  async savePost({ postId, text, labelIds }) {
+  async savePost({ postId, text, labelIds, meta }) {
     // Rebuild the link from the ID so only a real post URL can be stored.
     const page = classifyUrl(`https://www.linkedin.com/feed/update/${postId}/`);
     if (page.kind !== 'post' || page.id !== postId) {
@@ -73,6 +61,7 @@ const handlers = {
       excerpt: makeExcerpt(text),
       text,
       labelIds,
+      meta,
     });
     return { ...view(data, postId), created: result.created, removed: Boolean(result.removed) };
   },
@@ -93,23 +82,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// The toolbar icon opens the Library in Chrome's side panel, next to the page.
-function panelOnClick() {
-  chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true }).catch(err => console.warn(err));
-}
-chrome.runtime.onInstalled.addListener(panelOnClick);
-chrome.runtime.onStartup.addListener(panelOnClick);
-panelOnClick();
+// The Library is a page in a tab. The toolbar icon (and the picker's "Library" link)
+// switches to it if it's already open, or opens it.
+const LIBRARY_URL = chrome.runtime.getURL('library.html');
 
-// Opens the Library in the side panel, or as a tab if the panel can't open.
-async function openLibrary({ tabId, windowId }) {
+async function openLibrary() {
   try {
-    await chrome.sidePanel.open(tabId ? { tabId } : { windowId });
+    const [open] = await chrome.runtime.getContexts({ contextTypes: ['TAB'], documentUrls: [LIBRARY_URL] });
+    if (open && open.tabId >= 0) {
+      await chrome.tabs.update(open.tabId, { active: true });
+      await chrome.windows.update(open.windowId, { focused: true });
+      return;
+    }
   } catch (err) {
-    console.warn('Labels: could not open the side panel', err);
-    await chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?mode=page') });
+    console.warn('Labels: could not look for an open Library tab', err);
   }
+  await chrome.tabs.create({ url: LIBRARY_URL });
 }
+
+chrome.action.onClicked.addListener(() => openLibrary());
 
 // Keyboard shortcut (Alt+Shift+L by default, changeable at chrome://extensions/shortcuts).
 // On LinkedIn it opens the label picker for the post being looked at; elsewhere it opens
@@ -124,5 +115,5 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   } catch {
     // Not a LinkedIn tab (or it was open before Labels was installed).
   }
-  await openLibrary({ windowId: target?.windowId });
+  await openLibrary();
 });

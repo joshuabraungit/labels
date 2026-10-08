@@ -28,26 +28,6 @@
     .label-btn.saved { background: #6d4fc2; border-color: #6d4fc2; color: #fff; }
     .label-btn.saved:hover { background: #5c40ab; }
     .label-btn:focus-visible { outline: 2px solid #6d4fc2; outline-offset: 2px; }
-    .pick { width: 18px; height: 18px; margin: 0 8px 0 0; accent-color: #6d4fc2; cursor: pointer; align-self: center; }
-    .pick[hidden] { display: none; }
-  `;
-
-  // The "select posts" bar on LinkedIn's Saved posts page.
-  const BULK_CSS = `${BASE_CSS}
-    .bar {
-      position: fixed; z-index: 2147482000; left: 50%; bottom: 20px; transform: translateX(-50%);
-      display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px;
-      background: #1c1b22; color: #fff; border-radius: 999px; box-shadow: 0 8px 28px rgba(20, 20, 40, 0.28);
-      font-size: 14px; white-space: nowrap;
-    }
-    .bar .icon { display: inline-flex; color: #c9b8ff; }
-    .bar button { border: 0; border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 13px; cursor: pointer; }
-    .bar .ghost { background: transparent; color: #e4def6; }
-    .bar .ghost:hover { background: rgba(255, 255, 255, 0.1); }
-    .bar .primary { background: #6d4fc2; color: #fff; }
-    .bar .primary:hover { background: #7d62cc; }
-    .bar .primary:disabled { opacity: 0.5; cursor: default; }
-    .bar .count { color: #fff; font-weight: 600; padding: 0 4px; }
   `;
 
   const PANEL_CSS = `${BASE_CSS}
@@ -94,7 +74,6 @@
     .btn.saved, .btn.saved:disabled { opacity: 1; background: #edf7f0; border-color: #cfe8d7; color: #2f7d4f; font-weight: 600; }
     .error { margin: 8px 0; padding: 8px 10px; border-radius: 6px; background: #fdf0f0; color: #b4262c; font-size: 13px; }
     .list li:hover .del, .del:focus-visible { opacity: 1; }
-    .list .dot { flex: none; width: 9px; height: 9px; border-radius: 50%; margin-right: -2px; }
     .query-wrap { margin: 0 0 6px; }
     .query { width: 100%; }
     .keys { margin: 6px 0 0; font-size: 11px; color: #8a8994; }
@@ -120,10 +99,6 @@
   const buttons = new Map(); // post id -> { host, button, container }
   let savedIds = new Set();
   let savedNames = {}; // post ID -> its label names, shown on the button
-  // Bulk labeling on LinkedIn's Saved posts page.
-  let selectMode = false;
-  const selected = new Set();
-  let bulkHost = null;
   let panel = null; // open picker state
 
   // ---------- helpers ----------
@@ -144,17 +119,6 @@
     return el;
   }
 
-  // Same swatches as the popup (keys from LABEL_COLORS in lib/store.js).
-  const COLOR_HEX = {
-    purple: '#7c5cd6',
-    blue: '#3b82f6',
-    green: '#22a06b',
-    yellow: '#d9a400',
-    orange: '#f08c00',
-    red: '#e5484d',
-    pink: '#d6409f',
-    gray: '#8b8d98',
-  };
   async function send(type, payload = {}) {
     let response;
     try {
@@ -207,19 +171,6 @@
     Object.assign(host.style, { display: 'flex', justifyContent: 'flex-end', padding: '4px 12px 8px' });
     const root = host.attachShadow({ mode: 'open' });
     root.append(h('style', null, BUTTON_CSS));
-    // Shown only while selecting posts on the Saved posts page.
-    const check = h('input', {
-      type: 'checkbox',
-      class: 'pick',
-      hidden: true,
-      'aria-label': 'Select this post',
-      onChange: e => {
-        if (e.target.checked) selected.add(id);
-        else selected.delete(id);
-        renderBulkBar();
-      },
-    });
-    root.append(check);
     const button = h('button', {
       class: 'label-btn',
       type: 'button',
@@ -241,7 +192,7 @@
       Object.assign(host.style, { padding: '0 8px 0 8px', marginLeft: 'auto', alignItems: 'flex-start' });
       menu.before(host);
     } else container.prepend(host);
-    buttons.set(id, { host, button, container, check });
+    buttons.set(id, { host, button, container });
     paintButton(id);
   }
 
@@ -270,75 +221,6 @@
     );
     if (saved && names.length) entry.button.title = `Labeled: ${names.join(', ')}`;
     else entry.button.removeAttribute('title');
-    entry.check.hidden = !selectMode;
-    entry.check.checked = selected.has(id);
-  }
-
-  const isSavedPage = () => /^\/my-items\/saved-posts/.test(location.pathname);
-
-  function setSelectMode(on) {
-    selectMode = on;
-    selected.clear();
-    buttons.forEach((_, id) => paintButton(id));
-    renderBulkBar();
-  }
-
-  // The floating bar on the Saved posts page: "Select posts to label", then
-  // "3 selected · Select all · Label 3 posts · Cancel".
-  function renderBulkBar() {
-    if (!isSavedPage() || !buttons.size) {
-      bulkHost?.remove();
-      bulkHost = null;
-      if (selectMode) selectMode = false;
-      return;
-    }
-    if (!bulkHost) {
-      bulkHost = h('div', { 'data-labels-ui': 'bulk' });
-      bulkHost.attachShadow({ mode: 'open' });
-    }
-    if (!bulkHost.isConnected) document.body.append(bulkHost);
-    const root = bulkHost.shadowRoot;
-    const n = selected.size;
-    const posts = `${n} post${n === 1 ? '' : 's'}`;
-    const bar = selectMode
-      ? h(
-          'div',
-          { class: 'bar', role: 'toolbar', 'aria-label': 'Label several posts' },
-          h('span', { class: 'count', role: 'status' }, `${n} selected`),
-          h(
-            'button',
-            {
-              class: 'ghost',
-              type: 'button',
-              onClick: () => {
-                buttons.forEach((_, id) => selected.add(id));
-                buttons.forEach((_, id) => paintButton(id));
-                renderBulkBar();
-              },
-            },
-            'Select all',
-          ),
-          h(
-            'button',
-            {
-              class: 'primary',
-              type: 'button',
-              disabled: !n,
-              onClick: e => openPanel(null, null, e.currentTarget, { bulk: [...selected] }),
-            },
-            `Label ${posts}`,
-          ),
-          h('button', { class: 'ghost', type: 'button', onClick: () => setSelectMode(false) }, 'Cancel'),
-        )
-      : h(
-          'div',
-          { class: 'bar' },
-          h('span', { class: 'icon' }),
-          h('button', { class: 'ghost', type: 'button', onClick: () => setSelectMode(true) }, 'Select posts to label'),
-        );
-    root.replaceChildren(h('style', null, BULK_CSS), bar);
-    const icon = root.querySelector('.icon');
-    if (icon) icon.innerHTML = TAG_ICON;
   }
 
   function scan() {
@@ -356,7 +238,6 @@
       entry?.host.remove();
       addButton(id, container);
     }
-    renderBulkBar();
   }
 
   let scanTimer = 0;
@@ -382,7 +263,7 @@
     return text;
   }
 
-  function openPanel(postId, container, anchor, { viaKeyboard = false, bulk = null } = {}) {
+  function openPanel(postId, container, anchor, { viaKeyboard = false } = {}) {
     closePanel();
     const host = h('div', { 'data-labels-ui': 'panel' });
     const root = host.attachShadow({ mode: 'open' });
@@ -412,14 +293,14 @@
     });
     document.body.append(host);
 
-    // Bulk mode (several posts from the Saved posts page) has no single post to read or outline.
     const text = container ? labelsPostText(container).text : '';
     // Outline the post being labeled, so it's always clear which one it is.
     const outline = container && { outline: container.style.outline, outlineOffset: container.style.outlineOffset };
     if (container) Object.assign(container.style, { outline: '2px solid #6d4fc2', outlineOffset: '2px' });
     panel = {
       postId,
-      bulk,
+      // Who wrote it and its image, for the Library's cards.
+      meta: container ? labelsPostMeta(container) : null,
       host,
       box,
       anchor,
@@ -449,16 +330,21 @@
               p.text = full;
               renderPanel();
             }
-            // Already saved with less text (older save, or cut off by "…see more"): fill it in.
-            if (savedIds.has(postId) && full && full.length > (p.post?.text?.length ?? 0)) {
-              await send('fillText', { postId, text: full });
-            }
+            // Already saved with less (older save, or cut off by "…see more"): fill it in.
+            await p.stateReady;
+            const saved = p.post;
+            if (!saved) return;
+            const moreText = full.length > (saved.text?.length ?? 0);
+            const newAuthor =
+              p.meta.name && (p.meta.name !== saved.author?.name || p.meta.avatar !== saved.author?.avatar);
+            const newImage = p.meta.image && p.meta.image !== saved.image;
+            if (moreText || newAuthor || newImage) await send('fillText', { postId, text: full, meta: p.meta });
           })
           .catch(() => {})
       : Promise.resolve();
     renderPanel();
 
-    send('getState', { postId })
+    p.stateReady = send('getState', { postId })
       .then(state => {
         if (panel?.postId !== postId) return;
         panel.loading = false;
@@ -489,7 +375,7 @@
 
   function positionPanel() {
     if (!panel) return;
-    // Keep the last spot if the anchor went away (the bulk bar redraws after saving).
+    // Keep the last spot if the anchor went away (LinkedIn re-rendered the post).
     if (panel.anchor.isConnected) panel.anchorRect = panel.anchor.getBoundingClientRect();
     const r = panel.anchorRect;
     if (!r) return;
@@ -531,14 +417,14 @@
         'div',
         { class: 'head' },
         h('span', { class: 'icon' }),
-        h('h2', null, p.bulk ? `Label ${p.bulk.length} post${p.bulk.length === 1 ? '' : 's'}` : 'Save to Labels'),
-        // Browsing and organizing live in the Library (Chrome's side panel).
+        h('h2', null, 'Save to Labels'),
+        // Browsing and organizing live in the Library.
         h(
           'button',
           {
             class: 'library-link',
             type: 'button',
-            title: 'Open your Library in the side panel',
+            title: 'Open your Labels Library',
             'data-focus': 'library',
             onClick: () => send('openLibrary').catch(err => console.warn('Labels:', err)),
           },
@@ -736,74 +622,54 @@
                       renderPanel();
                     },
                   }),
-                  label.color && h('span', { class: 'dot', style: `background:${COLOR_HEX[label.color]}` }),
                   h('span', null, label.name),
                 ),
               );
             }),
           )
         : h('p', { class: 'hint' }, 'No labels yet. Type a name above to create one.'),
-      !p.closing &&
-        (p.bulk
-          ? h('p', { class: 'hint' }, 'Ticked labels are added to every selected post. Their other labels stay.')
-          : !p.selection.size && !existing && h('p', { class: 'hint' }, 'Pick or create a label to save.')),
+      !p.closing && !p.selection.size && !existing && h('p', { class: 'hint' }, 'Pick or create a label to save.'),
       p.error && h('div', { class: 'error', role: 'alert' }, p.error),
-      p.bulk && !p.closing
+      p.closing
         ? h(
-            'button',
-            {
-              class: 'btn primary block',
-              type: 'button',
-              disabled: p.saving || !p.selection.size,
-              'data-focus': 'save',
-              onClick: saveAndClose,
-            },
-            `Label ${p.bulk.length} post${p.bulk.length === 1 ? '' : 's'}`,
+            'div',
+            { class: 'confirm', role: 'status' },
+            h('span', { class: 'confirm-title' }, p.closing.title),
+            p.closing.labels && h('span', { class: 'confirm-labels' }, p.closing.labels),
           )
-        : p.closing
-          ? h(
-              'div',
-              { class: 'confirm', role: 'status' },
-              h('span', { class: 'confirm-title' }, p.closing.title),
-              p.closing.labels && h('span', { class: 'confirm-labels' }, p.closing.labels),
-            )
-          : !p.selection.size
-            ? existing
-              ? // Unticking every label on a saved post removes it from Labels.
-                h(
-                  'button',
-                  {
-                    class: 'btn danger block',
-                    type: 'button',
-                    disabled: p.saving,
-                    'data-focus': 'save',
-                    onClick: save,
-                  },
-                  'Remove from Labels',
-                )
-              : h(
-                  'button',
-                  { class: 'btn primary block', type: 'button', disabled: true, 'data-focus': 'save' },
-                  'Save',
-                )
-            : unchanged(p)
-              ? // Saved and nothing changed since: say so instead of offering a button with nothing to do.
-                h(
-                  'button',
-                  { class: 'btn saved block', type: 'button', disabled: true, 'data-focus': 'save' },
-                  'Saved \u2713',
-                )
-              : h(
-                  'button',
-                  {
-                    class: 'btn primary block',
-                    type: 'button',
-                    disabled: p.saving,
-                    'data-focus': 'save',
-                    onClick: save,
-                  },
-                  existing ? 'Update' : 'Save',
-                ),
+        : !p.selection.size
+          ? existing
+            ? // Unticking every label on a saved post removes it from Labels.
+              h(
+                'button',
+                {
+                  class: 'btn danger block',
+                  type: 'button',
+                  disabled: p.saving,
+                  'data-focus': 'save',
+                  onClick: save,
+                },
+                'Remove from Labels',
+              )
+            : h('button', { class: 'btn primary block', type: 'button', disabled: true, 'data-focus': 'save' }, 'Save')
+          : unchanged(p)
+            ? // Saved and nothing changed since: say so instead of offering a button with nothing to do.
+              h(
+                'button',
+                { class: 'btn saved block', type: 'button', disabled: true, 'data-focus': 'save' },
+                'Saved \u2713',
+              )
+            : h(
+                'button',
+                {
+                  class: 'btn primary block',
+                  type: 'button',
+                  disabled: p.saving,
+                  'data-focus': 'save',
+                  onClick: save,
+                },
+                existing ? 'Update' : 'Save',
+              ),
       !p.closing && p.status === 'Removed from Labels' && h('div', { class: 'status', role: 'status' }, p.status),
     );
   }
@@ -813,7 +679,6 @@
   const CONFIRM_MS = 1500;
   async function saveAndClose() {
     const p = panel;
-    if (p.bulk) return bulkSave();
     if (!p.selection.size && !p.post) {
       p.error = 'Pick or create a label first.';
       p.focusKey = 'query';
@@ -857,61 +722,8 @@
     closePanel();
   }
 
-  // Picks up what the background sent back after labeling several posts.
-  function applyLabels(p, state) {
-    p.labels = state.labels;
-    p.post = state.post;
-    savedIds = new Set(state.savedIds);
-    savedNames = state.savedLabels ?? {};
-    buttons.forEach((_, id) => paintButton(id));
-  }
-
-  // Adds the ticked labels to every selected post, then confirms and closes.
-  async function bulkSave() {
-    const p = panel;
-    if (!p.selection.size) {
-      p.error = 'Pick or create a label first.';
-      p.focusKey = 'query';
-      renderPanel();
-      return;
-    }
-    p.saving = true;
-    p.error = '';
-    renderPanel();
-    try {
-      const posts = [];
-      for (const id of p.bulk) {
-        const container = buttons.get(id)?.container;
-        posts.push({ postId: id, text: container ? await readFullText(container) : '' });
-      }
-      const state = await send('labelMany', { posts, labelIds: [...p.selection] });
-      if (panel !== p) return;
-      applyLabels(p, state);
-      const n = p.bulk.length;
-      const names = p.labels.filter(l => p.selection.has(l.id)).map(l => l.name);
-      p.closing = { title: `Labeled ${n} post${n === 1 ? '' : 's'} \u2713`, labels: names.join(', ') };
-      setSelectMode(false);
-      p.saving = false;
-      renderPanel();
-      clearTimeout(p.closeTimer);
-      p.closeTimer = setTimeout(() => {
-        if (panel !== p || !p.closing) return;
-        p.box.classList.add('fading');
-        p.closeTimer = setTimeout(() => panel === p && p.closing && closePanel(), 180);
-      }, CONFIRM_MS);
-    } catch (err) {
-      p.saving = false;
-      p.error = err.message;
-      renderPanel();
-    }
-  }
-
   async function save() {
     const p = panel;
-    if (p.bulk) {
-      await bulkSave();
-      return false;
-    }
     const returnFocus = p.box.getRootNode().activeElement?.dataset?.focus || 'save';
     p.saving = true;
     p.error = '';
@@ -919,7 +731,12 @@
     renderPanel();
     try {
       await p.textReady;
-      const state = await send('savePost', { postId: p.postId, text: p.text, labelIds: [...p.selection] });
+      const state = await send('savePost', {
+        postId: p.postId,
+        text: p.text,
+        meta: p.meta,
+        labelIds: [...p.selection],
+      });
       if (panel !== p) return false;
       p.labels = state.labels;
       p.post = state.post;
@@ -1046,9 +863,6 @@
     if (message?.type === 'labels-shortcut') {
       handleShortcut();
       sendResponse({ handled: true });
-    } else if (message?.type === 'labels-diagnose') {
-      // Help's "Copy page info": a text-free outline of this page's layout.
-      sendResponse(capturePostText(null, 'diagnose'));
     }
     return false;
   });

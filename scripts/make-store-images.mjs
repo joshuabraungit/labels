@@ -82,6 +82,48 @@ posts[1].pinnedAt = now - 1000;
 for (const p of posts) if (!p.text && p.excerpt) p.text = p.excerpt;
 posts[2].text =
   'Your first line decides whether the rest gets read. Here are 9 openers that sound like a person, not a sequence.';
+// Sample authors (made-up people) with simple initial avatars, and two post images.
+const svg = body => `data:image/svg+xml;base64,${Buffer.from(body).toString('base64')}`;
+const face = (bg, letters) =>
+  svg(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" fill="${bg}"/><text x="48" y="60" font-size="36" text-anchor="middle" fill="#fff" font-family="Arial" font-weight="700">${letters}</text></svg>`,
+  );
+const chart = svg(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560"><rect width="1200" height="560" fill="#f1edfb"/><text x="80" y="110" font-size="44" font-family="Arial" font-weight="700" fill="#2b2540">Reply rate by first line</text>${[
+    220, 320, 180, 400, 290,
+  ]
+    .map(
+      (v, i) =>
+        `<rect x="${110 + i * 210}" y="${480 - v}" width="130" height="${v}" rx="10" fill="${i === 3 ? '#6d4fc2' : '#c9bdf0'}"/>`,
+    )
+    .join('')}</svg>`,
+);
+const people = {
+  maya: {
+    name: 'Maya Chen',
+    headline: 'VP Sales at Northwind | Outbound that sounds human',
+    avatar: face('#7c5cd6', 'MC'),
+  },
+  ravi: {
+    name: 'Ravi Patel',
+    headline: 'Founder, Pipeline Lab | Cold email & discovery coach',
+    avatar: face('#22a06b', 'RP'),
+  },
+  sara: {
+    name: 'Sara Lind',
+    headline: 'Head of Talent | Hiring for early-stage startups',
+    avatar: face('#f08c00', 'SL'),
+  },
+  tom: {
+    name: 'Tom Okafor',
+    headline: 'Writer | I help founders write posts people finish',
+    avatar: face('#3b82f6', 'TO'),
+  },
+};
+const byAuthor = ['maya', 'ravi', 'ravi', 'maya', 'ravi', 'maya', 'sara', 'tom', 'tom', 'sara'];
+posts.forEach((p, i) => (p.author = people[byAuthor[i]]));
+posts[1].image = chart;
+
 const data = {
   version: 1,
   labels: Object.fromEntries(Object.values(L).map(l => [l.id, l])),
@@ -102,39 +144,24 @@ try {
   if (!sw) sw = await context.waitForEvent('serviceworker');
   const extId = new URL(sw.url()).host;
 
+  // The Library.
   const page = await context.newPage();
-  await page.setViewportSize({ width: 400, height: 640 });
-  await page.goto(`chrome-extension://${extId}/sidepanel.html`);
+  await page.setViewportSize({ width: 1180, height: 760 });
+  await page.goto(`chrome-extension://${extId}/library.html`);
   await page.evaluate(d => chrome.storage.local.set({ 'labels.data.v1': d }), data);
   await page.reload();
-  await page.locator('.label-row').first().waitFor();
-  // What the side panel shows: its visible height, not the whole scrolling list.
+  await page.locator('.card').first().waitFor();
+  await page.waitForTimeout(300);
   const shotView = async () => `data:image/png;base64,${(await page.screenshot()).toString('base64')}`;
-  const shotEl = async sel => `data:image/png;base64,${(await page.locator(sel).screenshot()).toString('base64')}`;
-
-  await page.locator('.label-row', { hasText: 'Cold email' }).click();
-  await page.locator('.post-open').first().waitFor();
-  const labelView = await shotView();
-  await page.getByRole('button', { name: 'Back' }).click();
-  await page.getByRole('searchbox', { name: 'Search saved posts' }).fill('cold email');
-  await page.locator('.results-count').waitFor();
+  const libraryView = await shotView();
+  await page.getByRole('searchbox', { name: 'Search posts' }).fill('cold email');
   const searchView = await shotView();
-  await page.getByRole('button', { name: 'Clear search' }).click();
-  await page.locator('.label-row', { hasText: 'Cold email' }).click();
-  await page.getByRole('button', { name: 'Options', exact: true }).click();
-  const optionsView = await page.screenshot({ clip: { x: 0, y: 0, width: 400, height: 400 } });
-  await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Help' }).click();
-  const helpView = await shotEl('#app');
-
-  // The full-page view.
-  const full = await context.newPage();
-  await full.setViewportSize({ width: 1100, height: 720 });
-  await full.goto(`chrome-extension://${extId}/popup.html?mode=page`);
-  await full.locator('.sidebar .label-row', { hasText: 'Cold email' }).click();
-  await full.locator('.main .post-open').first().waitFor();
-  const fullView = `data:image/png;base64,${(await full.screenshot()).toString('base64')}`;
-  await full.close();
+  await page.getByRole('searchbox', { name: 'Search posts' }).fill('');
+  await page.locator('.nav-item', { hasText: 'Ravi Patel' }).click();
+  const peopleView = await shotView();
+  await page.locator('.nav-item', { hasText: 'All Posts' }).click();
+  await page.locator('.card').first().getByRole('button', { name: 'Edit labels' }).click();
+  const editView = await shotView();
 
   // The Label button and picker on a sample feed.
   const feed = await context.newPage();
@@ -154,7 +181,6 @@ try {
   const feedSaved = `data:image/png;base64,${(await feed.screenshot()).toString('base64')}`;
 
   const icon = `data:image/png;base64,${readFileSync(join(root, 'icons', 'icon-128.png')).toString('base64')}`;
-  const options = `data:image/png;base64,${optionsView.toString('base64')}`;
 
   // Compose at 1x so the files are exactly the sizes the store asks for.
   const composer = await chromium.launch({ channel: 'chromium' });
@@ -193,14 +219,15 @@ try {
       `<img src="${feedShot}" style="height:690px">`,
     ),
   );
+  const wide = src => `<img src="${src}" style="width:740px">`;
   await render(
     'screenshot-2-labels.jpg',
     1280,
     800,
     slide(
-      'Your Library, right beside LinkedIn',
-      'Click the Labels icon and your saves open in Chrome\u2019s side panel, or full screen in a tab: full posts, notes and pins.',
-      `<img src="${fullView}" style="width:720px">`,
+      'Your Library, all in one place',
+      'Click the Labels icon: every saved post as a card, with its author, image, text and labels.',
+      wide(libraryView),
     ),
   );
   await render(
@@ -209,8 +236,8 @@ try {
     800,
     slide(
       'Find it again in seconds',
-      'Search the full text of every post you saved, plus your notes and labels.',
-      `<img src="${searchView}" style="width:380px">`,
+      'Search the full text of every post you saved, plus authors and labels.',
+      wide(searchView),
     ),
   );
   await render(
@@ -218,9 +245,9 @@ try {
     1280,
     800,
     slide(
-      'Color, pin, share',
-      'Color your labels, pin the posts that matter, and copy any label as a list to share.',
-      `<img src="${options}" style="width:380px">`,
+      'Sort by label or by person',
+      'See everything from one label, or every post you saved from one person.',
+      wide(peopleView),
     ),
   );
   await render(
@@ -230,7 +257,7 @@ try {
     slide(
       'Private by design',
       'No account. Everything stays in your browser on your device. Export a backup whenever you like.',
-      `<img src="${helpView}" style="width:380px">`,
+      wide(editView),
     ),
   );
 

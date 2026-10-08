@@ -10,6 +10,7 @@ import {
   postsOnlyIn,
   PINNED_ID,
   pinnedCount,
+  cleanMeta,
   postsAsMarkdown,
   searchPosts,
   STORAGE_KEY,
@@ -296,6 +297,47 @@ test('backups keep text, notes and colors', async () => {
   assert.equal(post.text, 'A full text');
   assert.equal(post.note, 'remember this');
   assert.equal(data.labels[post.labelIds[0]].color, 'green');
+});
+
+test('author and image: saved, refreshed, searchable, kept in backups', async () => {
+  const A = 'urn:li:activity:7212345678901234567';
+  const store = createStore(memoryArea());
+  const { result: l } = await store.createLabel('Ideas');
+  const meta = {
+    name: '  Jane   Author ',
+    headline: 'Head of Design',
+    avatar: 'https://media.licdn.com/a.jpg',
+    image: 'https://media.licdn.com/p.jpg',
+  };
+  let { data } = await store.savePost({ id: A, url: POST_A, excerpt: 'x', labelIds: [l.id], meta });
+  assert.deepEqual(data.posts[A].author, {
+    name: 'Jane Author',
+    headline: 'Head of Design',
+    avatar: 'https://media.licdn.com/a.jpg',
+  });
+  assert.equal(data.posts[A].image, 'https://media.licdn.com/p.jpg');
+  assert.deepEqual(
+    searchPosts(data, 'jane').map(p => p.id),
+    [A],
+    'search finds the author',
+  );
+  // A later capture refreshes the author (photo links expire) but keeps the image if none is found.
+  ({ data } = await store.fillExcerpt(A, '', '', { name: 'Jane Author', avatar: 'https://media.licdn.com/b.jpg' }));
+  assert.equal(data.posts[A].author.avatar, 'https://media.licdn.com/b.jpg');
+  assert.equal(data.posts[A].image, 'https://media.licdn.com/p.jpg');
+
+  const other = createStore(memoryArea());
+  const { data: imported } = await other.importBackup(JSON.parse(JSON.stringify(exportBackup(data))));
+  assert.equal(imported.posts[A].author.name, 'Jane Author');
+  assert.equal(imported.posts[A].image, 'https://media.licdn.com/p.jpg');
+});
+
+test('cleanMeta drops unsafe or empty values', () => {
+  assert.deepEqual(cleanMeta({ name: '', image: '' }), {});
+  assert.deepEqual(cleanMeta({ name: 'X', avatar: 'javascript:alert(1)', image: 'http://insecure/p.jpg' }), {
+    author: { name: 'X' },
+  });
+  assert.equal(cleanMeta({ name: 'X', avatar: 'data:image/png;base64,AAA' }).author.avatar, 'data:image/png;base64,AAA');
 });
 
 test('backup round trip merges without duplicates', async () => {
