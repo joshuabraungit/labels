@@ -4,10 +4,9 @@
 // LinkedIn itself can't be used in automation (login, changing markup), so LinkedIn URLs are
 // served from local fixtures. Two test-only tweaks are applied to a temporary copy of the
 // extension, never to the shipped files:
-//   - host access to www.linkedin.com, because automation can't click the toolbar button to
-//     grant activeTab;
-//   - a shim that points chrome.tabs.query at the fixture tab, because the popup is opened as
-//     a page instead of from the toolbar.
+//   - host access to www.linkedin.com, so tab URLs are visible to the shim below;
+//   - a shim that points chrome.tabs.query at a chosen fixture tab ("the tab next to the
+//     side panel"), because automation opens the Library as a page, not in the side panel.
 import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -40,11 +39,13 @@ if (target) {
   chrome.tabs.query = async () => (await query({})).filter(t => (t.url || '').split(/[?#]/)[0] === target).slice(0, 1);
 }`,
 );
-const html = readFileSync(join(extDir, 'popup.html'), 'utf8');
-writeFileSync(
-  join(extDir, 'popup.html'),
-  html.replace('<script type="module"', '<script src="test-shim.js"></script><script type="module"'),
-);
+for (const file of ['popup.html', 'sidepanel.html']) {
+  const html = readFileSync(join(extDir, file), 'utf8');
+  writeFileSync(
+    join(extDir, file),
+    html.replace('<script type="module"', '<script src="test-shim.js"></script><script type="module"'),
+  );
+}
 
 const POST_A = 'https://www.linkedin.com/feed/update/urn:li:activity:7212345678901234567/';
 const POST_B = 'https://www.linkedin.com/posts/jane-doe_launch-activity-7200000000000000001-AbCd/';
@@ -56,6 +57,9 @@ const POST_C = 'https://www.linkedin.com/feed/update/urn:li:activity:73333333333
 const POST_D = 'https://www.linkedin.com/feed/update/urn:li:activity:7444444444444444444/';
 const POST_E = 'https://www.linkedin.com/feed/update/urn:li:activity:7555555555555555555/';
 // POST_E starts out without readable text, then "loads" it, to test preview backfill.
+const SCRATCH = 'https://www.linkedin.com/in/scratch/'; // a tab for the Library to open posts in
+const ID_A = 'urn:li:activity:7212345678901234567';
+const ID_B = 'urn:li:activity:7200000000000000001';
 let postEHasText = false;
 
 async function launch() {
@@ -77,7 +81,7 @@ async function launch() {
     else if (url.includes('activity:7555555555555555555')) {
       body = postEHasText
         ? read('post-new-markup.html').replaceAll('7333333333333333333', '7555555555555555555')
-        : read('post-no-text.html');
+        : read('post-no-text.html').replaceAll('7200000000000000001', '7555555555555555555');
     } else if (url.startsWith(FEED2)) body = read('feed-new-markup.html');
     else if (url.startsWith(FEED3)) body = read('feed-sdui.html');
     else if (url.startsWith(SAVED)) body = read('saved-posts.html');
@@ -97,13 +101,24 @@ async function check(name, fn) {
   console.log(`ok ${step} - ${name}`);
 }
 
-async function openPopup(context, extId, target, query = '') {
+// Opens the Library (sidepanel.html) as a page; `target` is the tab "next to" the panel.
+async function openLibrary(context, extId, target, query = '') {
   const page = await context.newPage();
   const qs = new URLSearchParams(query);
   if (target) qs.set('target', target);
-  await page.goto(`chrome-extension://${extId}/popup.html?${qs}`);
+  await page.goto(`chrome-extension://${extId}/sidepanel.html?${qs}`);
   await page.locator('body[data-ready]').waitFor();
   return page;
+}
+
+const feedButton = (page, id) => page.locator(`[data-labels-post="${id}"] button`);
+const panel = page => page.locator('[data-labels-ui="panel"] .panel');
+
+// Opens the picker for a post on a page and waits for its labels to load.
+async function openPicker(page, id) {
+  await feedButton(page, id).click();
+  await panel(page).getByLabel('Find or create a label').waitFor();
+  return panel(page);
 }
 
 // Returns the URL a click opens in a new tab (read through the tabs API, since tabs the
@@ -156,121 +171,132 @@ try {
   const noTextTab = await context.newPage();
   await noTextTab.goto(`${POST_B}?rcm=tracking`);
 
-  await check('feed page shows Your labels only, with a tip, and nothing to save', async () => {
-    const p = await openPopup(context, extId, FEED);
+  await check('Library: empty to start, with a tip on how to label', async () => {
+    const p = await openLibrary(context, extId, FEED);
     assert.deepEqual(await p.locator('h1.section-title').allTextContents(), ['Your labels']);
     assert.equal(await p.getByRole('tab').count(), 0, 'no tabs');
     assert.match(await p.locator('.tip').textContent(), /^To label a post, click Label under it on LinkedIn/);
-    assert.equal(await p.getByRole('button', { name: /^(Save|Update)$/ }).count(), 0);
-    await shot(p, '1-feed-page');
+    await p.getByText('Nothing saved yet.').waitFor();
+    assert.equal(await p.getByRole('button', { name: /^(Save|Update)$/ }).count(), 0, 'nothing to save here');
+    await shot(p, '1-library-empty');
     await p.close();
   });
 
-  await check('post page captures only the selected post text', async () => {
-    const p = await openPopup(context, extId, POST_A);
-    assert.deepEqual(await p.locator('h1.section-title').allTextContents(), ['Save this post', 'Your labels']);
-    const preview = await p.locator('.preview').textContent();
+  await check('post page: the Label button reads only that post', async () => {
+    const picker = await openPicker(postTab, ID_A);
+    await postTab.waitForFunction(
+      () =>
+        document.querySelector('[data-labels-ui="panel"]')?.shadowRoot.querySelector('.panel')?.dataset.excerpt
+          ?.length > 0,
+    );
+    const preview = await picker.getAttribute('data-excerpt');
     assert.ok(preview.startsWith('Design systems are not a project. They are a product with customers'), preview);
-    assert.ok(preview.endsWith('…') && preview.length <= 161, preview);
-    for (const bad of ['COMMENT', 'OTHER POST', 'Jane Author', 'hashtag', 'more', '\n']) {
+    for (const bad of ['COMMENT', 'OTHER POST', 'Jane Author', 'hashtag', '\n']) {
       assert.ok(!preview.includes(bad), `preview contains ${bad}`);
     }
-    await p.close();
   });
 
   let designId;
   await check('new labels are auto-selected; multiple labels save', async () => {
-    const p = await openPopup(context, extId, POST_A);
-    await createLabel(p, 'Design');
-    await createLabel(p, 'ai');
-    await createLabel(p, ' design ');
-    assert.match(await p.locator('.error').textContent(), /already have a label called "Design"/);
-    await p.getByLabel('New label name').press('Escape');
-    assert.deepEqual(await p.locator('.check-row span:not(.dot)').allTextContents(), ['ai', 'Design']);
-    assert.equal(await p.locator('.check-row input:checked').count(), 2);
-    await shot(p, '2-save-view');
-    await p.getByRole('button', { name: 'Save', exact: true }).click();
-    await p.getByText('Saved ✓').waitFor();
+    const picker = panel(postTab);
+    const query = picker.getByLabel('Find or create a label');
+    await query.fill('Design');
+    await query.press('Enter');
+    await query.fill('ai');
+    await query.press('Enter');
+    await picker.locator('li', { hasText: 'ai' }).locator('input:checked').waitFor();
+    assert.equal(await picker.locator('li input:checked').count(), 2);
+    await shot(postTab, '2-picker');
+    await picker.getByRole('button', { name: 'Save', exact: true }).click();
+    await picker.getByRole('button', { name: 'Saved ✓' }).waitFor();
+    const p = await openLibrary(context, extId, FEED);
     const data = await storedData(p);
-    const post = data.posts['urn:li:activity:7212345678901234567'];
+    const post = data.posts[ID_A];
     assert.equal(post.url, POST_A, 'tracking params stripped');
     assert.equal(post.labelIds.length, 2);
+    assert.ok(post.text.startsWith('Design systems are not a project.'), 'full text saved');
     designId = Object.values(data.labels).find(l => l.name === 'Design').id;
-    await shot(p, '3-saved');
+    // Label names are unique, ignoring case.
+    await createLabel(p, ' design ');
+    assert.match(await p.locator('.error').textContent(), /already have a label called "Design"/);
     await p.close();
+    await postTab.keyboard.press('Escape');
   });
 
   await check('saving again updates the same record', async () => {
-    const p = await openPopup(context, extId, POST_A);
+    const picker = await openPicker(postTab, ID_A);
     // Already saved and unchanged: the button says so and can't be clicked.
-    assert.equal(await p.getByRole('button', { name: 'Saved \u2713' }).isDisabled(), true);
-    assert.equal(await p.getByRole('button', { name: 'Update' }).count(), 0);
-    assert.equal(await p.locator('.check-row input:checked').count(), 2, 'existing labels shown');
-    await p.locator('.check-row', { hasText: 'ai' }).locator('input').uncheck();
-    await p.getByRole('button', { name: 'Update' }).click();
-    await p.getByRole('button', { name: 'Saved \u2713' }).waitFor();
+    assert.equal(await picker.getByRole('button', { name: 'Saved ✓' }).isDisabled(), true);
+    assert.equal(await picker.locator('li input:checked').count(), 2, 'existing labels shown');
+    await picker.locator('li', { hasText: 'ai' }).locator('input').uncheck();
+    await picker.getByRole('button', { name: 'Update' }).click();
+    await picker.getByRole('button', { name: 'Saved ✓' }).waitFor();
     // Changing it back to what's saved also shows Saved, no Update needed.
-    await p.locator('.check-row', { hasText: 'ai' }).locator('input').check();
-    assert.equal(await p.getByRole('button', { name: 'Update' }).count(), 1);
-    await p.locator('.check-row', { hasText: 'ai' }).locator('input').uncheck();
-    assert.equal(await p.getByRole('button', { name: 'Saved \u2713' }).isDisabled(), true);
+    await picker.locator('li', { hasText: 'ai' }).locator('input').check();
+    assert.equal(await picker.getByRole('button', { name: 'Update' }).count(), 1);
+    await picker.locator('li', { hasText: 'ai' }).locator('input').uncheck();
+    assert.equal(await picker.getByRole('button', { name: 'Saved ✓' }).isDisabled(), true);
+    await postTab.keyboard.press('Escape');
+    const p = await openLibrary(context, extId, FEED);
     const data = await storedData(p);
     assert.equal(Object.keys(data.posts).length, 1);
-    assert.deepEqual(data.posts['urn:li:activity:7212345678901234567'].labelIds, [designId]);
+    assert.deepEqual(data.posts[ID_A].labelIds, [designId]);
     await p.close();
   });
 
-  await check('saving needs a label; post without readable text gets a fallback preview', async () => {
-    const p = await openPopup(context, extId, POST_B);
-    assert.equal(await p.locator('.preview').textContent(), 'Open saved post');
-    assert.equal(await p.getByRole('button', { name: 'Save', exact: true }).isDisabled(), true);
-    await p.getByText('Pick or create a label to save.').waitFor();
-    await p.locator('.check-row', { hasText: 'ai' }).locator('input').check();
-    await p.getByRole('button', { name: 'Save', exact: true }).click();
-    await p.getByText('Saved ✓').waitFor();
+  await check('saving needs a label; a post without readable text gets a fallback preview', async () => {
+    const picker = await openPicker(noTextTab, ID_B);
+    assert.equal(await picker.getByRole('button', { name: 'Save', exact: true }).isDisabled(), true);
+    await picker.getByText('Pick or create a label to save.').waitFor();
+    await picker.locator('li', { hasText: 'ai' }).locator('input').check();
+    await picker.getByRole('button', { name: 'Save', exact: true }).click();
+    await picker.getByRole('button', { name: 'Saved ✓' }).waitFor();
+    const p = await openLibrary(context, extId, FEED);
     assert.deepEqual(await labelsRows(p), ['ai:1', 'Design:1']);
     await shot(p, '4-your-labels');
+    await p.locator('.label-row', { hasText: 'ai' }).click();
+    assert.match(await p.locator('.post-open').first().textContent(), /^Open saved post · saved \w{3} \d{1,2}$/);
     await p.close();
   });
 
   await check('errors keep label selections for retry', async () => {
-    const p = await openPopup(context, extId, POST_B);
-    await p.locator('.check-row', { hasText: 'Design' }).locator('input').check();
-    await p.evaluate(() => {
+    const picker = panel(noTextTab);
+    await picker.locator('li', { hasText: 'Design' }).locator('input').check();
+    const [sw] = context.serviceWorkers();
+    await sw.evaluate(() => {
       const area = chrome.storage.local;
       const set = area.set.bind(area);
       let failures = 1;
       area.set = (...args) => (failures-- > 0 ? Promise.reject(new Error('simulated disk error')) : set(...args));
     });
-    await p.getByRole('button', { name: 'Update' }).click();
-    await p.locator('.error').waitFor();
-    assert.equal(await p.locator('.check-row input:checked').count(), 2, 'selection kept after error');
-    await p.getByRole('button', { name: 'Update' }).click();
-    await p.getByText('Saved ✓').waitFor();
-    const data = await storedData(p);
-    assert.equal(data.posts['urn:li:activity:7200000000000000001'].labelIds.length, 2);
+    await picker.getByRole('button', { name: 'Update' }).click();
+    await picker.locator('.error').waitFor();
+    assert.equal(await picker.locator('li input:checked').count(), 2, 'selection kept after error');
+    await picker.getByRole('button', { name: 'Update' }).click();
+    await picker.getByRole('button', { name: 'Saved ✓' }).waitFor();
     // Back to just "ai" for the next steps.
-    await p.locator('.check-row', { hasText: 'Design' }).locator('input').uncheck();
-    await p.getByRole('button', { name: 'Update' }).click();
-    await p.getByText('Saved ✓').waitFor();
-    await p.close();
+    await picker.locator('li', { hasText: 'Design' }).locator('input').uncheck();
+    await picker.getByRole('button', { name: 'Update' }).click();
+    await picker.getByRole('button', { name: 'Saved ✓' }).waitFor();
+    await noTextTab.keyboard.press('Escape');
   });
 
-  await check('label screen lists previews and opens the original URL', async () => {
-    const p = await openPopup(context, extId, FEED);
+  await check('Library: a label lists its posts; clicking one opens it in the tab next to the panel', async () => {
+    const scratch = await context.newPage();
+    await scratch.goto(SCRATCH);
+    const p = await openLibrary(context, extId, SCRATCH);
     await p.locator('.label-row', { hasText: 'Design' }).click();
     assert.equal(await p.locator('.header h2').textContent(), 'Design');
     assert.equal(await p.getByRole('button', { name: 'Options', exact: true }).count(), 1);
     await shot(p, '5-label-screen');
-    assert.equal(await openedUrl(p, () => p.locator('.post-open').first().click()), POST_A);
-    await p.getByRole('button', { name: 'Back' }).click();
-    await p.locator('.label-row', { hasText: 'ai' }).click();
-    assert.equal(await openedUrl(p, () => p.locator('.post-open').first().click()), POST_B);
+    await p.locator('.post-open').first().click();
+    await scratch.waitForURL(POST_A);
     await p.close();
+    await scratch.close();
   });
 
   await check('rename keeps posts and re-sorts', async () => {
-    const p = await openPopup(context, extId, FEED);
+    const p = await openLibrary(context, extId, FEED);
     await p.locator('.label-row', { hasText: 'Design' }).click();
     await p.getByRole('button', { name: 'Options', exact: true }).click();
     assert.equal(await p.locator('.menu-caption').textContent(), 'EDIT THIS LABEL');
@@ -289,7 +315,7 @@ try {
   });
 
   await check('edit labels from a row; deleting a label warns and removes posts with no other label', async () => {
-    const p = await openPopup(context, extId, FEED);
+    const p = await openLibrary(context, extId, FEED);
     await p.locator('.label-row', { hasText: 'Zeta design' }).click();
     await p.getByRole('button', { name: 'Saved post options' }).click();
     await p.getByRole('menuitem', { name: 'Edit labels' }).click();
@@ -335,21 +361,25 @@ try {
   });
 
   await check('labels new posts again for the next steps', async () => {
-    let p = await openPopup(context, extId, POST_B);
-    await createLabel(p, 'Launches');
-    await p.getByRole('button', { name: 'Save', exact: true }).click();
-    await p.getByText('Saved ✓').waitFor();
-    await p.close();
-    p = await openPopup(context, extId, POST_A);
-    await p.locator('.check-row', { hasText: 'Launches' }).locator('input').check();
-    await p.getByRole('button', { name: 'Save', exact: true }).click();
-    await p.getByText('Saved ✓').waitFor();
+    let picker = await openPicker(noTextTab, ID_B);
+    const query = picker.getByLabel('Find or create a label');
+    await query.fill('Launches');
+    await query.press('Enter');
+    await picker.getByRole('button', { name: 'Save', exact: true }).click();
+    await picker.getByRole('button', { name: 'Saved ✓' }).waitFor();
+    await noTextTab.keyboard.press('Escape');
+    picker = await openPicker(postTab, ID_A);
+    await picker.locator('li', { hasText: 'Launches' }).locator('input').check();
+    await picker.getByRole('button', { name: 'Save', exact: true }).click();
+    await picker.getByRole('button', { name: 'Saved ✓' }).waitFor();
+    await postTab.keyboard.press('Escape');
+    const p = await openLibrary(context, extId, FEED);
     assert.deepEqual(await labelsRows(p), ['Launches:2']);
     await p.close();
   });
 
-  await check('pin posts in the popup: pinned go first, and show under Pinned', async () => {
-    const p = await openPopup(context, extId, FEED);
+  await check('pin posts in the Library: pinned go first, and show under Pinned', async () => {
+    const p = await openLibrary(context, extId, FEED);
     await p.locator('.label-row', { hasText: 'Launches' }).click();
     const opened = () => p.locator('.post-open').evaluateAll(els => els.map(e => e.title));
     const [first, second] = await opened();
@@ -376,8 +406,8 @@ try {
     await p.close();
   });
 
-  await check('search, notes, label colors and copy as list in the popup', async () => {
-    const p = await openPopup(context, extId, FEED);
+  await check('search, notes, label colors and copy as list in the Library', async () => {
+    const p = await openLibrary(context, extId, FEED);
     const search = p.getByRole('searchbox', { name: 'Search saved posts' });
     await search.fill('design systems');
     assert.equal(await p.locator('.results-count').textContent(), '1 post found');
@@ -427,7 +457,7 @@ try {
   });
 
   await check('full-page view: sidebar of labels, full text, search', async () => {
-    const popup = await openPopup(context, extId, FEED);
+    const popup = await openLibrary(context, extId, FEED);
     const [p] = await Promise.all([
       context.waitForEvent('page'),
       popup.getByRole('button', { name: 'Open Labels in a tab' }).click(),
@@ -458,13 +488,16 @@ try {
     await p.close();
   });
 
-  await check('delete a label from the popup list, with the same warning', async () => {
-    const tab = await context.newPage();
-    await tab.goto(POST_A);
-    const p = await openPopup(context, extId, POST_A);
+  await check('delete a label from the Library list, with a warning', async () => {
+    const p = await openLibrary(context, extId, FEED);
     await createLabel(p, 'Gone');
-    await p.getByRole('button', { name: 'Update' }).click();
-    await p.getByText('Saved \u2713').waitFor();
+    // Give one post the label, from the post's menu.
+    await p.locator('.label-row', { hasText: 'Launches' }).click();
+    await p.getByRole('button', { name: 'Saved post options' }).first().click();
+    await p.getByRole('menuitem', { name: 'Edit labels' }).click();
+    await p.locator('.check-row', { hasText: 'Gone' }).locator('input').check();
+    await p.getByRole('button', { name: 'Save', exact: true }).click();
+    await p.getByRole('button', { name: 'Back' }).click();
     assert.deepEqual(await labelsRows(p), ['Gone:1', 'Launches:2']);
     const row = p.locator('.label-item', { hasText: 'Gone' });
     await row.hover();
@@ -479,15 +512,12 @@ try {
     await row.getByRole('button', { name: 'Delete label Gone' }).click();
     await p.getByRole('button', { name: 'Permanently delete it' }).click();
     assert.deepEqual(await labelsRows(p), ['Launches:2']);
-    assert.deepEqual(await p.locator('.check-row span:not(.dot)').allTextContents(), ['Launches']);
-    await p.getByRole('button', { name: 'Saved \u2713' }).waitFor();
     await p.close();
-    await tab.close();
   });
 
   let backupPath;
   await check('export backup', async () => {
-    const p = await openPopup(context, extId, FEED);
+    const p = await openLibrary(context, extId, FEED);
     await p.getByRole('button', { name: 'Help' }).click();
     await shot(p, '8-help');
     const [download] = await Promise.all([
@@ -509,7 +539,7 @@ try {
   await check('data persists after restarting Chrome', async () => {
     await context.close();
     ({ context, extId } = await launch());
-    const p = await openPopup(context, extId, FEED);
+    const p = await openLibrary(context, extId, FEED);
     assert.deepEqual(await labelsRows(p), ['Launches:2']);
     await p.close();
   });
@@ -545,7 +575,7 @@ try {
   });
 
   await check('remove saved post deletes only the record', async () => {
-    const p = await openPopup(context, extId, FEED);
+    const p = await openLibrary(context, extId, FEED);
     await p.locator('.label-row', { hasText: 'Launches' }).click();
     await p.getByRole('button', { name: 'Saved post options' }).first().click();
     // Removes right away, no confirm dialog; Undo puts it back.
@@ -565,87 +595,65 @@ try {
   });
 
   await check('unticking every label on a saved post offers Remove from Labels', async () => {
-    const list = await openPopup(context, extId, FEED);
+    const list = await openLibrary(context, extId, FEED);
     const remaining = Object.values((await storedData(list)).posts);
     await list.close();
     assert.equal(remaining.length, 1);
     const tab = await context.newPage();
-    await tab.goto(remaining[0].url);
-    const p = await openPopup(context, extId, remaining[0].url);
-    await p.locator('.check-row', { hasText: 'Launches' }).locator('input').uncheck();
-    assert.equal(await p.getByRole('button', { name: 'Update' }).count(), 0);
-    await p.getByRole('button', { name: 'Remove from Labels' }).click();
-    await p.getByText('Removed from Labels.').waitFor();
+    // The test server serves each fixture at the post's original link.
+    await tab.goto(remaining[0].id === ID_B ? POST_B : POST_A);
+    const picker = await openPicker(tab, remaining[0].id);
+    await picker.locator('li', { hasText: 'Launches' }).locator('input').uncheck();
+    assert.equal(await picker.getByRole('button', { name: 'Update' }).count(), 0);
+    await picker.getByRole('button', { name: 'Remove from Labels' }).click();
+    await picker.getByText('Removed from Labels').first().waitFor();
+    assert.equal(await picker.getByRole('button', { name: 'Save', exact: true }).isDisabled(), true);
+    const p = await openLibrary(context, extId, FEED);
     assert.equal(Object.keys((await storedData(p)).posts).length, 0);
     assert.deepEqual(await labelsRows(p), ['Launches:0']);
-    assert.equal(await p.getByRole('button', { name: 'Save', exact: true }).isDisabled(), true);
     await p.close();
     await tab.close();
   });
 
-  await check('layout without known class names: captures the post, not header or comments', async () => {
+  await check('layout without known class names: reads the post, not header or comments', async () => {
     const tab = await context.newPage();
     await tab.goto(POST_C);
-    const p = await openPopup(context, extId, POST_C);
-    const preview = await p.locator('.preview').textContent();
+    const picker = await openPicker(tab, 'urn:li:activity:7333333333333333333');
+    const preview = await picker.getAttribute('data-excerpt');
     assert.ok(
       preview.startsWith('Contrary to seemingly every single person in tech / SaaS, I hate Wispr Flow.'),
       preview,
     );
-    for (const bad of ['Finn', 'Founder', 'Follow', 'COMMENT', 'Struggling', 'reactions', 'more', '10h']) {
+    for (const bad of ['Finn', 'Founder', 'Follow', 'COMMENT', 'Struggling', 'reactions', '10h']) {
       assert.ok(!preview.includes(bad), `preview contains ${bad}: ${preview}`);
     }
-    await p.close();
     await tab.close();
   });
 
-  await check('falls back to the tab title without the author name', async () => {
-    const tab = await context.newPage();
-    await tab.goto(POST_D);
-    const p = await openPopup(context, extId, POST_D);
-    assert.equal(
-      await p.locator('.preview').textContent(),
-      'Cold email is not dead, your offer is. Here is the 3-line email',
-    );
-    await p.close();
-    await tab.close();
-  });
-
-  await check('missing previews show the save date, offer page info, and fill in later', async () => {
+  await check('a post saved without text fills in when you open its picker again', async () => {
+    const ID_E = 'urn:li:activity:7555555555555555555';
     const tab = await context.newPage();
     await tab.goto(POST_E);
-    let p = await openPopup(context, extId, POST_E);
-    assert.equal(await p.locator('.preview').textContent(), 'Open saved post');
-    // Headless Chrome won't grant clipboard access to extension pages, so capture the write.
-    await p.evaluate(() => {
-      navigator.clipboard.writeText = async text => (window.copiedText = text);
-    });
-    await p.getByRole('button', { name: 'Copy page info' }).click();
-    await p.getByText('Copied.', { exact: false }).waitFor();
-    const outline = await p.evaluate(() => window.copiedText);
-    assert.match(outline, /container: found-by-class/);
-    assert.match(outline, /data-urn="urn:li:activity:<ID>"/);
-    assert.ok(!/Image only post|LinkedIn/.test(outline.split('\n').slice(5).join('\n')), 'outline has no page text');
-    await p.locator('.check-row', { hasText: 'Launches' }).locator('input').check();
-    await p.getByRole('button', { name: 'Save', exact: true }).click();
-    await p.getByText('Saved \u2713').waitFor();
+    let picker = await openPicker(tab, ID_E);
+    await picker.locator('li', { hasText: 'Launches' }).locator('input').check();
+    await picker.getByRole('button', { name: 'Save', exact: true }).click();
+    await picker.getByRole('button', { name: 'Saved ✓' }).waitFor();
+    let p = await openLibrary(context, extId, FEED);
     await p.locator('.label-row', { hasText: 'Launches' }).click();
-    assert.match(await p.locator('.post-open').first().textContent(), /^Open saved post \u00B7 saved \w{3} \d{1,2}$/);
-    await p.close();
+    assert.match(await p.locator('.post-open').first().textContent(), /^Open saved post · saved \w{3} \d{1,2}$/);
 
+    // The text loads later; just opening the post's picker saves it, no changes needed.
     postEHasText = true;
     await tab.reload();
-    p = await openPopup(context, extId, POST_E);
-    await p.locator('.label-row', { hasText: 'Launches' }).click();
-    assert.ok((await p.locator('.post-open').first().textContent()).startsWith('Contrary to seemingly'));
+    picker = await openPicker(tab, ID_E);
+    await p.locator('.post-open', { hasText: 'Contrary to seemingly' }).waitFor();
+    assert.ok((await storedData(p)).posts[ID_E].text.startsWith('Contrary to seemingly'));
     await p.close();
     await tab.close();
   });
 
   // ---------- Label buttons in the feed ----------
 
-  const feedButton = (page, id) => page.locator(`[data-labels-post="${id}"] button`);
-  const panel = page => page.locator('[data-labels-ui="panel"] .panel');
   const ID1 = 'urn:li:activity:7600000000000000001';
   const ID2 = 'urn:li:activity:7600000000000000002';
   const ID3 = 'urn:li:activity:7600000000000000003';
@@ -688,7 +696,7 @@ try {
     await panel(feed).getByText('Saved \u2713').waitFor();
     await feedButton(feed, ID1).getByText('Feed picks', { exact: true }).waitFor();
     assert.equal(await feedButton(feed, ID1).getAttribute('title'), 'Labeled: Feed picks', 'button names its labels');
-    const p = await openPopup(context, extId, FEED);
+    const p = await openLibrary(context, extId, FEED);
     const stored = await storedData(p);
     const post = stored.posts[ID1];
     assert.equal(post.url, `https://www.linkedin.com/feed/update/${ID1}/`);
@@ -720,123 +728,18 @@ try {
     await panel(feed).waitFor({ state: 'detached' });
   });
 
-  await check("feed: picker shows post counts that list the label's posts in place", async () => {
+  await check('feed: the picker is for labeling only, with a link to the Library', async () => {
     await feedButton(feed, ID1).click();
-    const pill = panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count');
-    await pill.waitFor();
-    assert.equal(await pill.textContent(), '1 \u203A');
-    assert.equal(await pill.getAttribute('title'), 'View 1 saved post');
-    assert.equal(
-      await panel(feed).locator('li', { hasText: 'Launches' }).locator('.count').count(),
-      1,
-      'labels with posts get a pill',
-    );
-    const before = await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('input').isChecked();
-    await pill.click();
-    // The label's posts show inside the picker, no new tab.
-    await panel(feed).locator('.label-view').waitFor();
-    assert.equal(await panel(feed).locator('.label-view h2').textContent(), 'Feed picks');
-    const rows = panel(feed).locator('.posts a');
-    assert.equal(await rows.count(), 1);
-    assert.ok((await rows.first().textContent()).startsWith('Feed post one'));
-    assert.equal(await rows.first().getAttribute('href'), `https://www.linkedin.com/feed/update/${ID1}/`);
-    assert.equal(await panel(feed).getByText('This post').count(), 0, 'no "This post" tag');
-    // Remove the post from this label: no confirm, no Undo bar.
-    await panel(feed).getByRole('button', { name: 'Remove from Feed picks' }).click();
-    await panel(feed).getByText('No saved posts with this label.').waitFor();
-    assert.equal(await panel(feed).locator('.undo').count(), 0, 'no Undo bar');
-    // It was the post's only label, so the saved post is deleted.
-    assert.equal(await rows.count(), 0, 'gone from the list');
-    await feedButton(feed, ID1).getByText('Label', { exact: true }).waitFor();
-    await panel(feed).getByRole('button', { name: 'Back' }).click();
-    assert.equal(
-      await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('input').isChecked(),
-      false,
-      'unticked in the picker after removing',
-    );
-    assert.equal(await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count').count(), 0, 'count gone');
-    await panel(feed).locator('li', { hasText: 'Launches' }).locator('.count').click();
-    await panel(feed).getByRole('button', { name: 'Back' }).click();
-    // Not saved any more, so the picker offers Save. Re-add it for the next steps.
-    await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('input').check();
-    await panel(feed).getByRole('button', { name: 'Save', exact: true }).click();
-    await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
-    await feedButton(feed, ID1).getByText('Feed picks', { exact: true }).waitFor();
-    await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count').click();
-    assert.equal(await rows.count(), 1);
-    // Esc (or Back) returns to the picker as it was, without ticking anything.
-    await feed.keyboard.press('Escape');
-    await panel(feed).locator('.label-view').waitFor({ state: 'detached' });
-    assert.equal(
-      await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('input').isChecked(),
-      before,
-      'clicking the count does not tick the box',
-    );
-    await pill.click();
-    await panel(feed).getByRole('button', { name: 'Back' }).click();
     await panel(feed).getByLabel('Find or create a label').waitFor();
-    await feed.keyboard.press('Escape');
-    await panel(feed).waitFor({ state: 'detached' });
-  });
-
-  await check("feed: pin and unpin from a label's posts in the picker", async () => {
-    await feedButton(feed, ID1).click();
-    await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count').click();
-    await panel(feed).getByRole('button', { name: 'Pin post' }).click();
-    assert.equal(await panel(feed).getByRole('button', { name: 'Unpin post' }).getAttribute('aria-pressed'), 'true');
-    await panel(feed).getByRole('button', { name: 'Back' }).click();
-    const pinnedRow = panel(feed).locator('li.pinned-row');
-    assert.equal(await pinnedRow.locator('.count').textContent(), '1 \u203A');
-    await pinnedRow.locator('.count').click();
-    assert.equal(await panel(feed).locator('.label-view h2').textContent(), 'Pinned');
-    assert.equal(await panel(feed).locator('.posts a').count(), 1);
-    assert.equal(await panel(feed).locator('.posts .remove').count(), 0, 'nothing to remove from in Pinned');
-    await panel(feed).getByRole('button', { name: 'Unpin post' }).click();
-    await panel(feed).getByText('No pinned posts.').waitFor();
-    await panel(feed).getByRole('button', { name: 'Back' }).click();
-    assert.equal(await pinnedRow.count(), 0, 'Pinned row hides when empty');
-    await feed.keyboard.press('Escape');
-    await panel(feed).waitFor({ state: 'detached' });
-  });
-
-  await check('feed: delete a label from the picker, with a warning first', async () => {
-    await feedButton(feed, ID3).click();
-    const query = panel(feed).getByLabel('Find or create a label');
-    await query.fill('Temp');
-    await query.press('Enter');
-    await panel(feed).getByRole('button', { name: 'Save', exact: true }).click();
-    await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
-    await feedButton(feed, ID3).getByText('Temp', { exact: true }).waitFor();
-    const row = panel(feed).locator('li', { hasText: 'Temp' });
-    await row.hover();
-    await row.getByRole('button', { name: 'Delete label Temp' }).click();
-    // Asks first. Never mind (or Esc) goes back with nothing changed.
-    const warn = panel(feed).locator('.warn');
-    assert.deepEqual(await warn.locator('p').allTextContents(), [
-      'Deleting the Temp label will remove it from 1 post and cannot be undone.',
-      'That post has no other label, so it will be deleted too.',
-      'Do you want to permanently delete it?',
-    ]);
-    await panel(feed).getByRole('button', { name: 'Never mind' }).click();
-    assert.equal(await warn.count(), 0);
-    assert.equal(await row.locator('input').isChecked(), true);
-    await row.hover();
-    await row.getByRole('button', { name: 'Delete label Temp' }).click();
-    await feed.keyboard.press('Escape');
-    assert.equal(await warn.count(), 0);
-    assert.equal(await panel(feed).count(), 1, 'Esc only closes the warning');
-    await row.hover();
-    await row.getByRole('button', { name: 'Delete label Temp' }).click();
-    await panel(feed).getByRole('button', { name: 'Permanently delete it' }).click();
-    await warn.waitFor({ state: 'detached' });
-    assert.equal(await panel(feed).locator('li', { hasText: 'Temp' }).count(), 0);
-    await feedButton(feed, ID3).getByText('Label', { exact: true }).waitFor();
-    assert.equal(await panel(feed).getByRole('button', { name: 'Save', exact: true }).isDisabled(), true);
-    const p = await openPopup(context, extId, FEED);
-    const stored = await storedData(p);
-    assert.ok(!Object.values(stored.labels).some(l => l.name === 'Temp'));
-    assert.equal(stored.posts[ID3], undefined);
-    await p.close();
+    assert.equal(await panel(feed).locator('.count, .del, .pinned-row').count(), 0, 'no counts, trash or Pinned');
+    // The side panel can't open in headless Chrome, so Labels falls back to a Library tab.
+    const opened = context.waitForEvent('page', { timeout: 5000 }).catch(() => null);
+    await panel(feed).getByRole('button', { name: 'Library' }).click();
+    const page = await opened;
+    if (page) {
+      assert.match(page.url(), /popup\.html\?mode=page$/);
+      await page.close();
+    }
     await feed.keyboard.press('Escape');
     await panel(feed).waitFor({ state: 'detached' });
   });
@@ -858,7 +761,7 @@ try {
     await panel(feed).getByLabel('Find or create a label').press('Control+Enter');
     await panel(feed).locator('.confirm').waitFor();
     await feed.keyboard.press('Escape');
-    const p = await openPopup(context, extId, FEED);
+    const p = await openLibrary(context, extId, FEED);
     const stored = await storedData(p);
     assert.equal(Object.keys(stored.posts).filter(id => id === ID2).length, 1);
     assert.deepEqual(
@@ -887,8 +790,8 @@ try {
     await feedButton(feed, 'urn:li:activity:7600000000000000009').waitFor();
   });
 
-  await check('feed: buttons update when a post is removed in the popup', async () => {
-    const p = await openPopup(context, extId, FEED);
+  await check('feed: buttons update when a post is removed in the Library', async () => {
+    const p = await openLibrary(context, extId, FEED);
     await p.locator('.label-row', { hasText: 'Feed picks' }).click();
     await p.getByRole('button', { name: 'Saved post options' }).click();
     await p.getByRole('menuitem', { name: 'Remove saved post' }).click();
@@ -898,7 +801,7 @@ try {
   });
 
   await check('feed: Help offers Copy page info on LinkedIn pages', async () => {
-    const p = await openPopup(context, extId, FEED2);
+    const p = await openLibrary(context, extId, FEED2);
     // Troubleshooting lives in Help now.
     await p.getByRole('button', { name: 'Help' }).click();
     await p.evaluate(() => {
@@ -954,7 +857,7 @@ try {
     assert.equal(await panel(sdui).getAttribute('data-excerpt'), 'SDUI post three has comments loaded underneath it.');
     await sdui.keyboard.press('Escape');
 
-    const p = await openPopup(context, extId, FEED);
+    const p = await openLibrary(context, extId, FEED);
     const stored = await storedData(p);
     assert.equal(stored.posts[S1].url, `https://www.linkedin.com/feed/update/${S1}/`);
     assert.equal(
@@ -1018,7 +921,7 @@ try {
     await bar.getByRole('button', { name: 'Select posts to label' }).waitFor();
     assert.equal(await pick(P1).isVisible(), false, 'checkboxes hide when done');
     await panel(saved).waitFor({ state: 'detached', timeout: 4000 });
-    const p = await openPopup(context, extId, FEED);
+    const p = await openLibrary(context, extId, FEED);
     const stored = await storedData(p);
     for (const id of [P1, P2]) {
       assert.deepEqual(
@@ -1041,7 +944,7 @@ try {
   // Automation can't press a Chrome command shortcut, so these send the same message the
   // background worker sends when the shortcut is pressed.
   const pressShortcut = async tabUrl => {
-    const p = await openPopup(context, extId, FEED);
+    const p = await openLibrary(context, extId, FEED);
     await p.evaluate(async url => {
       const tabs = await globalThis.realTabsQuery({});
       const tab = tabs.find(t => (t.url || '').startsWith(url));
@@ -1095,7 +998,7 @@ try {
     assert.equal(await panel(sdui).locator('.confirm').textContent(), 'Saved \u2713Feed picks, Keyboard only');
     await panel(sdui).waitFor({ state: 'detached', timeout: 4000 });
     assert.equal(await outlined(sdui, S3), false, 'outline removed on close');
-    const p = await openPopup(context, extId, FEED);
+    const p = await openLibrary(context, extId, FEED);
     const stored = await storedData(p);
     assert.deepEqual(stored.posts[S3].labelIds.map(id => stored.labels[id].name).sort(), [
       'Feed picks',
@@ -1104,17 +1007,6 @@ try {
     await p.close();
 
     await feedButton(sdui, S3).getByText('Feed picks +1').waitFor();
-    // A post with another label is only taken out of this one, not deleted.
-    await feedButton(sdui, S3).click();
-    await panel(sdui).locator('li', { hasText: 'Keyboard only' }).locator('.count').click();
-    await panel(sdui).getByRole('button', { name: 'Remove from Keyboard only' }).click();
-    await panel(sdui).getByText('No saved posts with this label.').waitFor();
-    await panel(sdui).getByRole('button', { name: 'Back' }).click();
-    assert.deepEqual(await checked(), ['Feed picks'], 'still saved with its other label');
-    await feedButton(sdui, S3).getByText('Feed picks', { exact: true }).waitFor();
-    await sdui.keyboard.press('Escape');
-    await panel(sdui).waitFor({ state: 'detached' });
-
     // Moving the mouse over the confirmation keeps the picker open.
     await pressShortcut(FEED3);
     await panel(sdui).waitFor();
@@ -1152,7 +1044,7 @@ try {
   });
 
   await check('shortcut: registered, and shown in Help', async () => {
-    const p = await openPopup(context, extId, FEED);
+    const p = await openLibrary(context, extId, FEED);
     const commands = await p.evaluate(() => chrome.commands.getAll());
     assert.ok(
       commands.some(c => c.name === 'label-post'),

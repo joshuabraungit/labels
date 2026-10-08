@@ -1031,3 +1031,20 @@ body.page-mode .post-open .excerpt {
 body.page-mode .partial {
   font-size: 13px;
 }
+
+/* The Library in Chrome's side panel: full width, the panel itself scrolls */
+body.panel-mode {
+  width: auto;
+  min-height: 100vh;
+}
+
+body.panel-mode .scroll {
+  max-height: none;
+}
+
+body.panel-mode .post-open .excerpt {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+  white-space: pre-line;
+}

@@ -60,6 +60,9 @@
     .head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
     .head .icon { color: #6d4fc2; display: inline-flex; }
     .head h2 { flex: 1; margin: 0; font-size: 15px; font-weight: 600; }
+    .library-link { border: 0; background: transparent; color: #6d4fc2; font-size: 13px; font-weight: 600; padding: 3px 8px;
+      border-radius: 6px; }
+    .library-link:hover { background: #f2eefb; }
     .close { border: 0; background: transparent; color: #6b6a75; font-size: 20px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
     .close:hover { background: #f6f5f9; color: #1c1b22; }
     .meta { margin: -4px 0 8px; font-size: 12px; color: #6b6a75; }
@@ -90,49 +93,8 @@
     .btn:disabled { opacity: 0.55; cursor: default; }
     .btn.saved, .btn.saved:disabled { opacity: 1; background: #edf7f0; border-color: #cfe8d7; color: #2f7d4f; font-weight: 600; }
     .error { margin: 8px 0; padding: 8px 10px; border-radius: 6px; background: #fdf0f0; color: #b4262c; font-size: 13px; }
-    .count {
-      flex: none; margin-right: 10px; padding: 4px 10px; border: 1px solid #e4def6; border-radius: 999px;
-      background: #f7f5fd; color: #5c40ab; font-size: 12px; font-weight: 600; line-height: 1.3;
-      font-variant-numeric: tabular-nums;
-    }
-    .count:hover { background: #ece6fa; border-color: #d3c8f1; }
-    .count:focus-visible { outline: 2px solid #6d4fc2; outline-offset: 1px; }
-    .del {
-      flex: none; display: grid; place-items: center; margin-right: 8px; width: 28px; height: 28px; padding: 0;
-      border: 0; border-radius: 6px; background: transparent; color: #9a99a3; opacity: 0;
-    }
     .list li:hover .del, .del:focus-visible { opacity: 1; }
-    .del:hover { background: #fdf0f0; color: #b4262c; }
-    .del svg { width: 16px; height: 16px; }
-    .pinned-row { padding: 8px 0 8px 16px; }
-    .pinned-row .pin-mark { display: inline-flex; width: 16px; margin-right: 10px; justify-content: center; color: #6d4fc2; }
-    .pinned-row .pin-mark svg { width: 15px; height: 15px; }
-    .pinned-row .pinned-name { flex: 1; font-weight: 500; }
     .list .dot { flex: none; width: 9px; height: 9px; border-radius: 50%; margin-right: -2px; }
-    .del-spacer { flex: none; width: 28px; margin-right: 8px; }
-    .posts .pin {
-      flex: none; display: grid; place-items: center; margin: 8px 0 0; width: 28px; height: 28px; padding: 0; border: 0;
-      border-radius: 6px; background: transparent; color: #9a99a3; opacity: 0;
-    }
-    .posts li:hover .pin, .posts .pin:focus-visible, .posts .pin.on { opacity: 1; }
-    .posts .pin.on { color: #6d4fc2; }
-    .posts .pin:hover { background: #f2eefb; color: #5c40ab; }
-    .posts .pin svg { width: 16px; height: 16px; }
-    .warn {
-      margin: 4px 0 2px; padding: 18px 16px 16px; border-radius: 14px; text-align: center;
-      background: linear-gradient(120deg, #fff4cc 0%, #ffe9d2 55%, #ffe1d8 100%);
-    }
-    .warn-title { margin: 0 0 8px; font-size: 15px; font-weight: 700; line-height: 1.35; color: #1c1b22; }
-    .warn-title em { font-style: italic; }
-    .warn-text { margin: 0 0 6px; font-size: 14px; line-height: 1.4; color: #2e2d36; }
-    .warn-actions { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
-    .pill { border: 0; border-radius: 999px; padding: 8px 13px; font-size: 13px; font-weight: 600; color: #fff; cursor: pointer;
-      white-space: nowrap; }
-    .pill.keep { background: #6d4fc2; }
-    .pill.keep:hover { background: #5c40ab; }
-    .pill.delete { background: #c4260f; }
-    .pill.delete:hover { background: #a51f0b; }
-    .pill:focus-visible { outline: 2px solid #1c1b22; outline-offset: 2px; }
     .query-wrap { margin: 0 0 6px; }
     .query { width: 100%; }
     .keys { margin: 6px 0 0; font-size: 11px; color: #8a8994; }
@@ -143,26 +105,6 @@
       color: #5c40ab; font-size: 14px; font-weight: 500; text-align: left; }
     .create-btn .plus { width: 16px; text-align: center; font-weight: 700; }
     .panel { transition: opacity 0.18s ease; }
-    .back { border: 0; background: transparent; color: #6b6a75; font-size: 22px; line-height: 1; padding: 0 8px 2px 2px;
-      margin-left: -4px; border-radius: 6px; }
-    .back:hover { background: #f6f5f9; color: #1c1b22; }
-    .label-view .head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .posts { list-style: none; margin: 4px -16px 0; padding: 0; overflow-y: auto;
-      max-height: clamp(200px, calc(100vh - 200px), 460px); border-top: 1px solid #ececf0; }
-    .posts li { display: flex; align-items: flex-start; }
-    .posts li + li { border-top: 2px solid #e5484d; }
-    .posts a { flex: 1; min-width: 0; display: block; padding: 11px 16px; color: #1c1b22; text-decoration: none; line-height: 1.5; }
-    .posts a:hover { background: #f6f5f9; }
-    .posts a:hover .excerpt { color: #5c40ab; }
-    .posts .excerpt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-      overflow-wrap: anywhere; }
-    .posts .excerpt.fallback { color: #6b6a75; font-style: italic; }
-    .posts .remove {
-      flex: none; margin: 8px 8px 0 0; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent;
-      color: #9a99a3; font-size: 18px; line-height: 1; opacity: 0.6;
-    }
-    .posts li:hover .remove, .posts .remove:focus-visible { opacity: 1; }
-    .posts .remove:hover { background: #fdf0f0; color: #b4262c; }
     .panel.fading { opacity: 0; }
     .confirm {
       display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 9px 12px;
@@ -202,7 +144,6 @@
     return el;
   }
 
-  const PINNED_ID = 'pinned';
   // Same swatches as the popup (keys from LABEL_COLORS in lib/store.js).
   const COLOR_HEX = {
     purple: '#7c5cd6',
@@ -214,42 +155,6 @@
     pink: '#d6409f',
     gray: '#8b8d98',
   };
-  function pinIcon(filled) {
-    const ns = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('aria-hidden', 'true');
-    ['M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6z', 'M12 15v6'].forEach((d, i) => {
-      const path = document.createElementNS(ns, 'path');
-      path.setAttribute('d', d);
-      path.setAttribute('fill', filled && i === 0 ? 'currentColor' : 'none');
-      path.setAttribute('stroke', 'currentColor');
-      path.setAttribute('stroke-width', '2');
-      path.setAttribute('stroke-linecap', 'round');
-      path.setAttribute('stroke-linejoin', 'round');
-      svg.append(path);
-    });
-    return svg;
-  }
-
-  function trashIcon() {
-    const ns = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('aria-hidden', 'true');
-    for (const d of ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 13h10l1-13', 'M9 7V4h6v3']) {
-      const path = document.createElementNS(ns, 'path');
-      path.setAttribute('d', d);
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', 'currentColor');
-      path.setAttribute('stroke-width', '2');
-      path.setAttribute('stroke-linecap', 'round');
-      path.setAttribute('stroke-linejoin', 'round');
-      svg.append(path);
-    }
-    return svg;
-  }
-
   async function send(type, payload = {}) {
     let response;
     try {
@@ -539,10 +444,14 @@
     const p = panel;
     p.textReady = container
       ? readFullText(container)
-          .then(full => {
+          .then(async full => {
             if (panel === p && full.length > p.text.length) {
               p.text = full;
               renderPanel();
+            }
+            // Already saved with less text (older save, or cut off by "…see more"): fill it in.
+            if (savedIds.has(postId) && full && full.length > (p.post?.text?.length ?? 0)) {
+              await send('fillText', { postId, text: full });
             }
           })
           .catch(() => {})
@@ -554,7 +463,6 @@
         if (panel?.postId !== postId) return;
         panel.loading = false;
         panel.labels = state.labels;
-        panel.pinned = state.pinned;
         panel.post = state.post;
         panel.wasSaved = Boolean(state.post);
         panel.selection = new Set(state.post?.labelIds ?? []);
@@ -618,23 +526,33 @@
     const existing = p.post;
     const excerpt = shortPreview(p.text) || existing?.excerpt || '';
 
-    const parts = p.viewLabel
-      ? [renderLabelView()]
-      : [
-          h(
-            'div',
-            { class: 'head' },
-            h('span', { class: 'icon' }),
-            h('h2', null, p.bulk ? `Label ${p.bulk.length} post${p.bulk.length === 1 ? '' : 's'}` : 'Save to Labels'),
-            h(
-              'button',
-              { class: 'close', type: 'button', 'aria-label': 'Close', 'data-focus': 'close', onClick: closePanel },
-              '×',
-            ),
-          ),
-          p.wasSaved && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
-          p.loading ? h('div', { class: 'loading' }, 'Loading your labels…') : renderPickerBody(),
-        ];
+    const parts = [
+      h(
+        'div',
+        { class: 'head' },
+        h('span', { class: 'icon' }),
+        h('h2', null, p.bulk ? `Label ${p.bulk.length} post${p.bulk.length === 1 ? '' : 's'}` : 'Save to Labels'),
+        // Browsing and organizing live in the Library (Chrome's side panel).
+        h(
+          'button',
+          {
+            class: 'library-link',
+            type: 'button',
+            title: 'Open your Library in the side panel',
+            'data-focus': 'library',
+            onClick: () => send('openLibrary').catch(err => console.warn('Labels:', err)),
+          },
+          'Library',
+        ),
+        h(
+          'button',
+          { class: 'close', type: 'button', 'aria-label': 'Close', 'data-focus': 'close', onClick: closePanel },
+          '\u00D7',
+        ),
+      ),
+      p.wasSaved && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
+      p.loading ? h('div', { class: 'loading' }, 'Loading your labels\u2026') : renderPickerBody(),
+    ];
     p.box.replaceChildren(...parts.filter(Boolean));
     // No preview on screen; the captured text stays on the element (used by the tests).
     p.box.dataset.excerpt = excerpt;
@@ -690,7 +608,6 @@
         const state = await send('createLabel', { name: option.name, postId: p.postId });
         if (panel !== p) return;
         p.labels = state.labels;
-        p.pinned = state.pinned;
         p.selection.add(state.created.id);
         p.added.push(state.created.id);
       } catch (err) {
@@ -772,7 +689,6 @@
 
   function renderPickerBody() {
     const p = panel;
-    if (p.confirmDelete) return renderDeleteConfirm();
     const existing = p.post;
     const options = labelOptions(p);
     return h(
@@ -783,28 +699,6 @@
         ? h(
             'ul',
             { class: 'list', role: 'listbox', 'aria-label': 'Labels' },
-            // Pinned sits on top (not a label you can tick), once anything is pinned.
-            !p.query &&
-              p.pinned > 0 &&
-              h(
-                'li',
-                { class: 'pinned-row' },
-                h('span', { class: 'pin-mark' }, pinIcon(true)),
-                h('span', { class: 'pinned-name' }, 'Pinned'),
-                h(
-                  'button',
-                  {
-                    class: 'count',
-                    type: 'button',
-                    title: `View ${p.pinned} pinned post${p.pinned === 1 ? '' : 's'}`,
-                    'aria-label': `View ${p.pinned} pinned post${p.pinned === 1 ? '' : 's'}`,
-                    'data-focus': `count-${PINNED_ID}`,
-                    onClick: () => openLabel(PINNED_ID),
-                  },
-                  `${p.pinned} \u203A`,
-                ),
-                h('span', { class: 'del-spacer' }),
-              ),
             options.map((option, index) => {
               const active = index === p.active ? ' active' : '';
               if (option.kind === 'create') {
@@ -844,31 +738,6 @@
                   }),
                   label.color && h('span', { class: 'dot', style: `background:${COLOR_HEX[label.color]}` }),
                   h('span', null, label.name),
-                ),
-                label.count > 0 &&
-                  h(
-                    'button',
-                    {
-                      class: 'count',
-                      type: 'button',
-                      title: `View ${label.count} saved post${label.count === 1 ? '' : 's'}`,
-                      'aria-label': `View ${label.count} saved post${label.count === 1 ? '' : 's'} in ${label.name}`,
-                      'data-focus': `count-${label.id}`,
-                      onClick: () => openLabel(label.id),
-                    },
-                    `${label.count} ›`,
-                  ),
-                h(
-                  'button',
-                  {
-                    class: 'del',
-                    type: 'button',
-                    title: 'Delete label',
-                    'aria-label': `Delete label ${label.name}`,
-                    'data-focus': `del-${label.id}`,
-                    onClick: () => askDeleteLabel(label),
-                  },
-                  trashIcon(),
                 ),
               );
             }),
@@ -984,263 +853,17 @@
     return saved.length === p.selection.size && saved.every(id => p.selection.has(id));
   }
 
-  // Esc steps back out of a label's post list; otherwise it closes the picker.
   function escape() {
-    if (panel?.confirmDelete) cancelDeleteLabel();
-    else if (panel?.viewLabel) backToPicker();
-    else closePanel();
+    closePanel();
   }
 
-  // Shows a label's saved posts inside the picker; Back returns to the picker as it was.
-  async function openLabel(labelId) {
-    const p = panel;
-    const label = labelId === PINNED_ID ? { name: 'Pinned' } : p.labels.find(l => l.id === labelId);
-    try {
-      const { posts } = await send('labelPosts', { labelId });
-      if (panel !== p) return;
-      p.viewLabel = {
-        id: labelId,
-        name: label?.name ?? '',
-        posts,
-        scroll: p.box.querySelector('.list')?.scrollTop ?? 0,
-      };
-      p.focusKey = 'back';
-    } catch (err) {
-      p.error = err.message;
-    }
-    renderPanel();
-  }
-
-  function backToPicker() {
-    const p = panel;
-    const { id, scroll } = p.viewLabel;
-    p.viewLabel = null;
-    p.focusKey = `count-${id}`;
-    renderPanel();
-    const list = p.box.querySelector('.list');
-    if (list) list.scrollTop = scroll;
-  }
-
-  function savedOn(ms) {
-    const date = new Date(ms);
-    const sameYear = date.getFullYear() === new Date().getFullYear();
-    return date.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      ...(sameYear ? {} : { year: 'numeric' }),
-    });
-  }
-
-  function renderLabelView() {
-    const p = panel;
-    const v = p.viewLabel;
-    return h(
-      'div',
-      { class: 'label-view' },
-      h(
-        'div',
-        { class: 'head' },
-        h(
-          'button',
-          { class: 'back', type: 'button', 'aria-label': 'Back', 'data-focus': 'back', onClick: backToPicker },
-          '\u2039',
-        ),
-        h('h2', { title: v.name }, v.name),
-        h('button', { class: 'close', type: 'button', 'aria-label': 'Close', onClick: closePanel }, '\u00D7'),
-      ),
-      v.posts.length
-        ? h(
-            'ul',
-            { class: 'posts' },
-            v.posts.map(post =>
-              h(
-                'li',
-                null,
-                h(
-                  'a',
-                  { href: post.url, target: '_blank', rel: 'noopener noreferrer', title: 'Open the original post' },
-                  h(
-                    'span',
-                    { class: `excerpt${post.excerpt ? '' : ' fallback'}` },
-                    post.excerpt || `${FALLBACK_PREVIEW} \u00B7 saved ${savedOn(post.savedAt)}`,
-                  ),
-                ),
-                h(
-                  'button',
-                  {
-                    class: `pin${post.pinnedAt ? ' on' : ''}`,
-                    type: 'button',
-                    title: post.pinnedAt ? 'Unpin' : 'Pin',
-                    'aria-label': post.pinnedAt ? 'Unpin post' : 'Pin post',
-                    'aria-pressed': String(Boolean(post.pinnedAt)),
-                    'data-focus': `pin-${post.id}`,
-                    onClick: () => togglePin(post),
-                  },
-                  pinIcon(Boolean(post.pinnedAt)),
-                ),
-                // Pinned isn't a real label, so there's nothing to remove the post from.
-                v.id !== PINNED_ID &&
-                  h(
-                    'button',
-                    {
-                      class: 'remove',
-                      type: 'button',
-                      title: `Remove from ${v.name}`,
-                      'aria-label': `Remove from ${v.name}`,
-                      'data-focus': `remove-${post.id}`,
-                      onClick: () => removeFromLabel(post),
-                    },
-                    '\u00D7',
-                  ),
-              ),
-            ),
-          )
-        : h('p', { class: 'hint' }, v.id === PINNED_ID ? 'No pinned posts.' : 'No saved posts with this label.'),
-      p.error && h('div', { class: 'error', role: 'alert' }, p.error),
-    );
-  }
-
-  async function togglePin(post) {
-    const p = panel;
-    const v = p.viewLabel;
-    p.error = '';
-    try {
-      const state = await send('setPinned', {
-        postId: post.id,
-        pinned: !post.pinnedAt,
-        labelId: v.id,
-        currentPostId: p.postId,
-      });
-      if (panel !== p || p.viewLabel !== v) return;
-      v.posts = state.posts;
-      applyLabels(p, state);
-      p.focusKey = v.posts.some(x => x.id === post.id) ? `pin-${post.id}` : 'back';
-    } catch (err) {
-      p.error = err.message;
-    }
-    renderPanel();
-  }
-
-  // Picks up what the background sent back after a label was deleted or restored.
+  // Picks up what the background sent back after labeling several posts.
   function applyLabels(p, state) {
     p.labels = state.labels;
-    p.pinned = state.pinned;
     p.post = state.post;
     savedIds = new Set(state.savedIds);
     savedNames = state.savedLabels ?? {};
     buttons.forEach((_, id) => paintButton(id));
-  }
-
-  // Deleting a label asks first, in the picker itself.
-  function askDeleteLabel(label) {
-    panel.confirmDelete = label;
-    panel.error = '';
-    panel.focusKey = 'never-mind';
-    renderPanel();
-  }
-
-  function cancelDeleteLabel() {
-    const label = panel.confirmDelete;
-    panel.confirmDelete = null;
-    panel.focusKey = label ? `cb-${label.id}` : 'query';
-    renderPanel();
-  }
-
-  async function deleteLabel() {
-    const p = panel;
-    const label = p.confirmDelete;
-    if (!label) return;
-    p.error = '';
-    try {
-      const state = await send('deleteLabel', { labelId: label.id, postId: p.postId });
-      if (panel !== p) return;
-      applyLabels(p, state);
-      p.selection.delete(label.id);
-      p.added = p.added.filter(a => a !== label.id);
-      p.status = '';
-      p.confirmDelete = null;
-      p.focusKey = 'query';
-    } catch (err) {
-      p.error = err.message;
-    }
-    renderPanel();
-  }
-
-  function renderDeleteConfirm() {
-    const p = panel;
-    const { name, count, only } = p.confirmDelete;
-    const posts = n => `${n} post${n === 1 ? '' : 's'}`;
-    let also = '';
-    if (only && only === count) {
-      also =
-        count === 1
-          ? 'That post has no other label, so it will be deleted too.'
-          : 'Those posts have no other label, so they will be deleted too.';
-    } else if (only) {
-      also = `${posts(only)} ${only === 1 ? 'has' : 'have'} no other label and will be deleted too.`;
-    }
-    return h(
-      'div',
-      { class: 'warn', role: 'alertdialog', 'aria-label': 'Delete label' },
-      h(
-        'p',
-        { class: 'warn-title' },
-        'Deleting the ',
-        h('em', null, name),
-        count ? ` label will remove it from ${posts(count)} and cannot be undone.` : ' label cannot be undone.',
-      ),
-      also && h('p', { class: 'warn-text' }, also),
-      h('p', { class: 'warn-text' }, 'Do you want to permanently delete it?'),
-      p.error && h('div', { class: 'error', role: 'alert' }, p.error),
-      h(
-        'div',
-        { class: 'warn-actions' },
-        h(
-          'button',
-          { type: 'button', class: 'pill keep', 'data-focus': 'never-mind', onClick: cancelDeleteLabel },
-          'Never mind',
-        ),
-        h(
-          'button',
-          { type: 'button', class: 'pill delete', 'data-focus': 'delete-label', onClick: deleteLabel },
-          'Permanently delete it',
-        ),
-      ),
-    );
-  }
-
-  // Removes a post from the label being viewed, right away (no confirm, no Undo). If it was
-  // the post's last label, the saved post is deleted.
-  async function removeFromLabel(post) {
-    const p = panel;
-    const v = p.viewLabel;
-    const index = v.posts.findIndex(x => x.id === post.id);
-    p.error = '';
-    try {
-      const state = await send('setInLabel', {
-        postId: post.id,
-        labelId: v.id,
-        currentPostId: p.postId,
-      });
-      if (panel !== p || p.viewLabel !== v) return;
-      v.posts = state.posts;
-      p.labels = state.labels;
-      p.pinned = state.pinned;
-      savedIds = new Set(state.savedIds);
-      savedNames = state.savedLabels ?? {};
-      buttons.forEach((_, id) => paintButton(id));
-      if (post.id === p.postId) {
-        // Keep the picker in step with what's saved for the post being labeled.
-        p.post = state.post;
-        p.selection = new Set(state.post?.labelIds ?? []);
-      }
-      // Keep keyboard focus in the list: the next post's ✕, or Back when the list is empty.
-      const next = v.posts[Math.min(index, v.posts.length - 1)];
-      p.focusKey = next ? `remove-${next.id}` : 'back';
-    } catch (err) {
-      p.error = err.message;
-    }
-    renderPanel();
   }
 
   // Adds the ticked labels to every selected post, then confirms and closes.
@@ -1299,7 +922,6 @@
       const state = await send('savePost', { postId: p.postId, text: p.text, labelIds: [...p.selection] });
       if (panel !== p) return false;
       p.labels = state.labels;
-      p.pinned = state.pinned;
       p.post = state.post;
       p.status = state.removed ? 'Removed from Labels' : 'Saved ✓';
       savedIds = new Set(state.savedIds);
@@ -1408,7 +1030,6 @@
       buttons.forEach((_, id) => paintButton(id));
       if (panel && !panel.loading && state) {
         panel.labels = state.labels;
-        panel.pinned = state.pinned;
         panel.post = state.post;
         // Drop selections for labels deleted elsewhere.
         const ids = new Set(state.labels.map(l => l.id));
@@ -1421,9 +1042,14 @@
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.type !== 'labels-shortcut' || sender.id !== chrome.runtime.id) return false;
-    handleShortcut();
-    sendResponse({ handled: true });
+    if (sender.id !== chrome.runtime.id) return false;
+    if (message?.type === 'labels-shortcut') {
+      handleShortcut();
+      sendResponse({ handled: true });
+    } else if (message?.type === 'labels-diagnose') {
+      // Help's "Copy page info": a text-free outline of this page's layout.
+      sendResponse(capturePostText(null, 'diagnose'));
+    }
     return false;
   });
 

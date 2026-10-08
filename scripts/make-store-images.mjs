@@ -78,6 +78,8 @@ posts[0].pinnedAt = now;
 posts[1].text =
   'Three-line cold email that booked 14 meetings last quarter: the trigger, the proof, one easy question.\n\nTemplate inside. Steal it, tweak the trigger for your market, and keep it under 75 words.';
 posts[1].pinnedAt = now - 1000;
+// Every sample post has its full text (no "only part of this post" notes).
+for (const p of posts) if (!p.text && p.excerpt) p.text = p.excerpt;
 posts[2].text =
   'Your first line decides whether the rest gets read. Here are 9 openers that sound like a person, not a sequence.';
 const data = {
@@ -101,24 +103,26 @@ try {
   const extId = new URL(sw.url()).host;
 
   const page = await context.newPage();
-  await page.setViewportSize({ width: 360, height: 600 });
-  await page.goto(`chrome-extension://${extId}/popup.html`);
+  await page.setViewportSize({ width: 400, height: 640 });
+  await page.goto(`chrome-extension://${extId}/sidepanel.html`);
   await page.evaluate(d => chrome.storage.local.set({ 'labels.data.v1': d }), data);
   await page.reload();
   await page.locator('.label-row').first().waitFor();
+  // What the side panel shows: its visible height, not the whole scrolling list.
+  const shotView = async () => `data:image/png;base64,${(await page.screenshot()).toString('base64')}`;
   const shotEl = async sel => `data:image/png;base64,${(await page.locator(sel).screenshot()).toString('base64')}`;
 
   await page.locator('.label-row', { hasText: 'Cold email' }).click();
   await page.locator('.post-open').first().waitFor();
-  const labelView = await shotEl('#app');
+  const labelView = await shotView();
   await page.getByRole('button', { name: 'Back' }).click();
   await page.getByRole('searchbox', { name: 'Search saved posts' }).fill('cold email');
   await page.locator('.results-count').waitFor();
-  const searchView = await shotEl('#app');
+  const searchView = await shotView();
   await page.getByRole('button', { name: 'Clear search' }).click();
   await page.locator('.label-row', { hasText: 'Cold email' }).click();
   await page.getByRole('button', { name: 'Options', exact: true }).click();
-  const optionsView = await page.screenshot({ clip: { x: 0, y: 0, width: 360, height: 400 } });
+  const optionsView = await page.screenshot({ clip: { x: 0, y: 0, width: 400, height: 400 } });
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Help' }).click();
   const helpView = await shotEl('#app');
@@ -194,8 +198,8 @@ try {
     1280,
     800,
     slide(
-      'Your whole library in one view',
-      'Open Labels in a tab: labels on the left, full posts, notes and pins on the right.',
+      'Your Library, right beside LinkedIn',
+      'Click the Labels icon and your saves open in Chrome\u2019s side panel, or full screen in a tab: full posts, notes and pins.',
       `<img src="${fullView}" style="width:720px">`,
     ),
   );

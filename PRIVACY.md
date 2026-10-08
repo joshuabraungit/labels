@@ -21,8 +21,7 @@ That's all. Labels does not store or read comments, the post author's name or pr
 ## When Labels reads page content
 
 - **Label buttons:** on www.linkedin.com, Labels adds a small Label button under posts. It reads a post's link and visible text **only when you click that post's Label button or press the Labels keyboard shortcut**, and only for that one post. On LinkedIn's Saved posts page, if you select several posts and click **Label N posts**, it reads the text of just the posts you selected.
-- **Toolbar icon:** when you click the Labels icon while viewing a single LinkedIn post, Labels reads that page's link and the post's visible text so you can save it.
-- **Copy page info (optional, for troubleshooting):** if you click this link in the popup, Labels copies an outline of the page's layout to your clipboard. The outline contains tag and class names and text lengths only, with no post text, names or links. It goes only to your clipboard, and you decide whether to share it.
+- **Copy page info (optional, for troubleshooting):** if you click this link in Help, Labels copies an outline of the page's layout to your clipboard. The outline contains tag and class names and text lengths only, with no post text, names or links. It goes only to your clipboard, and you decide whether to share it.
 
 Labels does not run on any website other than www.linkedin.com. The only thing it ever clicks on LinkedIn is a post's "…see more" link, and only on the post you're labeling, so it can read the whole post. It does not scroll, post, message, like or otherwise automate anything on LinkedIn.
 
@@ -36,7 +35,7 @@ The only way data leaves the extension is if **you** choose **Export backup**, w
 
 Your data stays in your browser until you remove it:
 
-- Remove a single saved post with **Remove saved post** in the popup.
+- Remove a single saved post with **Remove saved post** in the Library.
 - Delete labels with **Delete** in a label's options. Posts that have no other label are removed too, and Labels tells you how many before you confirm.
 - Remove all Labels data by uninstalling the extension, or by clearing the extension's storage in Chrome.
 

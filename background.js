@@ -1,7 +1,7 @@
-// Handles storage for the feed buttons (content.js), so labels and saved posts are read
-// and written by the same code the toolbar popup uses.
+// Handles storage for the Label buttons and picker (content.js), so labels and saved posts
+// are read and written by the same code the Library uses. Also opens the Library.
 import { classifyUrl, makeExcerpt } from './lib/post.js';
-import { createStore, LabelsError, labelsWithCounts, pinnedCount, postsForLabel, postsOnlyIn } from './lib/store.js';
+import { createStore, LabelsError, labelsWithCounts } from './lib/store.js';
 
 const store = createStore(chrome.storage.local);
 
@@ -11,7 +11,6 @@ function view(data, postId) {
       id: l.id,
       name: l.name,
       count: l.count,
-      only: postsOnlyIn(data, l.id),
       color: data.labels[l.id]?.color ?? null,
     })),
     post: postId ? (data.posts[postId] ?? null) : null,
@@ -26,52 +25,10 @@ function view(data, postId) {
           .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
       ]),
     ),
-    pinned: pinnedCount(data),
   };
 }
 
-function labelPostRows(data, labelId) {
-  return postsForLabel(data, labelId).map(p => ({
-    id: p.id,
-    url: p.url,
-    excerpt: p.excerpt,
-    savedAt: p.savedAt,
-    pinnedAt: p.pinnedAt || 0,
-  }));
-}
-
 const handlers = {
-  // A label's saved posts, newest first, for the list inside the picker.
-  async labelPosts({ labelId }) {
-    return { posts: labelPostRows(await store.load(), labelId) };
-  },
-
-  // Takes a post out of one label. Other labels are untouched; removing a post's last
-  // label deletes the saved post.
-  async setInLabel({ postId, labelId, currentPostId }) {
-    const post = (await store.load()).posts[postId];
-    if (!post) throw new LabelsError('This saved post no longer exists.');
-    const labelIds = post.labelIds.filter(id => id !== labelId);
-    if (labelIds.length === 0) {
-      const { data } = await store.removePost(postId);
-      return { ...view(data, currentPostId), posts: labelPostRows(data, labelId) };
-    }
-    const { data } = await store.setPostLabels(postId, labelIds);
-    return { ...view(data, currentPostId), posts: labelPostRows(data, labelId) };
-  },
-
-  // Deletes a label from the picker (after it asks). Posts with no other label go with it.
-  async deleteLabel({ labelId, postId }) {
-    const { data, result } = await store.deleteLabel(labelId);
-    return { ...view(data, postId), removed: result.removed };
-  },
-
-  // Pins or unpins a post from the picker's list of a label's posts.
-  async setPinned({ postId, pinned, labelId, currentPostId }) {
-    const { data } = await store.setPinned(postId, pinned);
-    return { ...view(data, currentPostId), posts: labelPostRows(data, labelId) };
-  },
-
   // Adds labels to several posts at once (the Saved posts page's "select posts").
   async labelMany({ posts, labelIds }) {
     const records = (Array.isArray(posts) ? posts : []).flatMap(({ postId, text }) => {
@@ -81,6 +38,18 @@ const handlers = {
     });
     const { data, result } = await store.labelMany(records, labelIds);
     return { ...view(data, null), ...result };
+  },
+
+  // The picker's "Library" link.
+  async openLibrary(message, sender) {
+    await openLibrary({ tabId: sender.tab?.id, windowId: sender.tab?.windowId });
+    return {};
+  },
+
+  // Adds the full text (and a preview, if missing) to an already-saved post. Never shortens.
+  async fillText({ postId, text }) {
+    await store.fillExcerpt(postId, makeExcerpt(text), text);
+    return {};
   },
 
   async getState({ postId }) {
@@ -112,7 +81,7 @@ const handlers = {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handler = message?.type && handlers[message.type];
   if (!handler || sender.id !== chrome.runtime.id) return false;
-  handler(message)
+  handler(message, sender)
     .then(result => sendResponse({ ok: true, result }))
     .catch(err => {
       if (!(err instanceof LabelsError)) console.error(err);
@@ -124,9 +93,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+// The toolbar icon opens the Library in Chrome's side panel, next to the page.
+function panelOnClick() {
+  chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true }).catch(err => console.warn(err));
+}
+chrome.runtime.onInstalled.addListener(panelOnClick);
+chrome.runtime.onStartup.addListener(panelOnClick);
+panelOnClick();
+
+// Opens the Library in the side panel, or as a tab if the panel can't open.
+async function openLibrary({ tabId, windowId }) {
+  try {
+    await chrome.sidePanel.open(tabId ? { tabId } : { windowId });
+  } catch (err) {
+    console.warn('Labels: could not open the side panel', err);
+    await chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?mode=page') });
+  }
+}
+
 // Keyboard shortcut (Alt+Shift+L by default, changeable at chrome://extensions/shortcuts).
 // On LinkedIn it opens the label picker for the post being looked at; elsewhere it opens
-// the Labels popup.
+// the Library.
 chrome.commands.onCommand.addListener(async (command, tab) => {
   if (command !== 'label-post') return;
   const target = tab ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
@@ -137,9 +124,5 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   } catch {
     // Not a LinkedIn tab (or it was open before Labels was installed).
   }
-  try {
-    await chrome.action.openPopup();
-  } catch (err) {
-    console.warn('Labels: could not open the popup', err);
-  }
+  await openLibrary({ windowId: target?.windowId });
 });

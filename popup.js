@@ -1,4 +1,3 @@
-import { classifyUrl, makeExcerpt } from './lib/post.js';
 import {
   createStore,
   emptyData,
@@ -19,27 +18,15 @@ import {
 } from './lib/store.js';
 
 const store = createStore(chrome.storage.local);
-const mode = new URLSearchParams(location.search).get('mode');
-// 'tab': the popup UI in a tab (for import). 'page': the full-page view.
+// 'panel': the Library in Chrome's side panel (sidepanel.html). 'page': the full-page view.
+// 'tab': the same UI in a tab, for importing a backup.
+const mode = document.body.dataset.mode || new URLSearchParams(location.search).get('mode');
+const isPanel = mode === 'panel';
 const isPage = mode === 'page';
 const isTab = mode === 'tab' || isPage;
 const app = document.getElementById('app');
 const importInput = document.getElementById('import-file');
 
-// Runs lib/capture.js in the tab, then capturePostText(postId, mode) from it.
-async function runCapture(tabId, postId, mode) {
-  await chrome.scripting.executeScript({ target: { tabId }, files: ['lib/capture.js'] });
-  const [injection] = await chrome.scripting.executeScript({
-    target: { tabId },
-    // Expands a collapsed post ("…see more") first, so the whole text gets saved.
-    func: async (id, how) => {
-      if (how === 'capture' && labelsExpandPost(labelsContainerFor(id))) await new Promise(r => setTimeout(r, 600));
-      return capturePostText(id, how);
-    },
-    args: [postId, mode],
-  });
-  return injection?.result;
-}
 const FALLBACK_PREVIEW = 'Open saved post';
 function svgIcon(paths, fillFirst = false) {
   const ns = 'http://www.w3.org/2000/svg';
@@ -86,13 +73,8 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 const state = {
   data: emptyData(),
-  view: 'labels', // save | labels | label | edit | help
+  view: 'labels', // labels | label | edit | help
   helpReturn: 'labels',
-  page: { kind: 'other' }, // what the active tab shows; see classifyUrl
-  selection: new Set(),
-  saving: false,
-  saveStatus: '',
-  saveError: '',
   newLabel: { open: false, value: '', error: '' },
   labelId: null,
   editPostId: null,
@@ -153,7 +135,12 @@ function savedDate(ms) {
   });
 }
 
-function openPost(url) {
+// From the side panel, posts open in the tab next to it; elsewhere, in a new tab.
+async function openPost(url) {
+  if (isPanel) {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
+    if (tab?.id) return chrome.tabs.update(tab.id, { url });
+  }
   chrome.tabs.create({ url });
 }
 
@@ -168,7 +155,7 @@ function render() {
   const caret = active && 'selectionStart' in active && active.type === 'text' ? active.selectionStart : null;
   state.focus = null;
 
-  const views = { save: renderHome, labels: renderHome, label: renderLabel, edit: renderEdit, help: renderHelp };
+  const views = { labels: renderHome, label: renderLabel, edit: renderEdit, help: renderHelp };
   app.replaceChildren(renderTopbar());
   if (isPage) {
     pickPageLabel();
@@ -211,7 +198,7 @@ function renderTopbar() {
           {
             class: 'icon-btn svg',
             'aria-label': 'Open Labels in a tab',
-            title: 'Open Labels in a tab',
+            title: 'Open in a full tab',
             'data-focus': 'open-page',
             onClick: () => chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?mode=page') }),
           },
@@ -339,80 +326,18 @@ function renderPreview(excerpt) {
   return h('p', { class: `preview${excerpt ? '' : ' fallback'}` }, h('span', null, excerpt || FALLBACK_PREVIEW));
 }
 
-function renderSave() {
-  const page = state.page;
-  if (page.kind === 'post-unidentified') {
-    return h(
-      'div',
-      null,
-      h(
-        'div',
-        { class: 'error', role: 'alert' },
-        'Labels can’t identify a reliable link for this post, so it can’t be saved. Open the post from its timestamp, then click Labels again.',
-      ),
-    );
-  }
-
-  const existing = state.data.posts[page.id];
-  // Saved, and the ticked labels match what's saved: nothing to do.
-  const unchanged =
-    Boolean(existing) &&
-    existing.labelIds.length === state.selection.size &&
-    existing.labelIds.every(id => state.selection.has(id));
-  const clearStatus = () => {
-    state.saveStatus = '';
-  };
-
-  return h(
-    'div',
-    null,
-    renderPreview(page.excerpt || existing?.excerpt),
-    !page.excerpt && !existing?.excerpt && renderPreviewHelp(),
-    state.wasSaved && h('p', { class: 'meta' }, 'Already saved. Change its labels and click Update.'),
-    renderNewLabel(label => {
-      state.selection.add(label.id);
-      clearStatus();
-    }),
-    renderChecklist(state.selection, clearStatus),
-    !state.selection.size && !existing && h('p', { class: 'hint' }, 'Pick or create a label to save.'),
-    state.saveError && h('div', { class: 'error', role: 'alert' }, state.saveError),
-    state.saveStatus === 'Removed' && h('p', { class: 'meta', role: 'status' }, 'Removed from Labels.'),
-    unchanged
-      ? h('button', { class: 'btn saved block', disabled: true, 'data-focus': 'save' }, 'Saved \u2713')
-      : !state.selection.size && existing
-        ? h(
-            'button',
-            { class: 'btn danger block', disabled: state.saving, 'data-focus': 'save', onClick: onSave },
-            'Remove from Labels',
-          )
-        : h(
-            'button',
-            {
-              class: 'btn primary block',
-              disabled: state.saving || !state.selection.size,
-              'data-focus': 'save',
-              onClick: onSave,
-            },
-            existing ? 'Update' : 'Save',
-          ),
-  );
-}
-
-// Shown when no preview text was found. Copies a text-free outline of the page so the
-// reader can be adjusted to LinkedIn's current layout.
-function renderPreviewHelp() {
-  return h('p', { class: 'meta' }, 'No preview found. You can still save. ', renderCopyPageInfo());
-}
-
+// Help's "Copy page info": the LinkedIn tab's content script outlines its page layout.
 function renderCopyPageInfo() {
   const copy = async () => {
     try {
-      const result = await runCapture(state.page.tabId, state.page.id ?? null, 'diagnose');
-      await navigator.clipboard.writeText(result?.diagnosis || 'no diagnosis');
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const result = tab?.id && (await chrome.tabs.sendMessage(tab.id, { type: 'labels-diagnose' }));
+      if (!result?.diagnosis) throw new Error('no LinkedIn page');
+      await navigator.clipboard.writeText(result.diagnosis);
       state.diagStatus = 'Copied. It shows the page layout only, no post text or names.';
     } catch (err) {
       console.warn('Labels: could not copy page info', err);
-      state.diagStatus = 'Couldn\u2019t copy the page info.';
+      state.diagStatus = 'Open a LinkedIn page in this tab first, then try again.';
     }
     render();
   };
@@ -424,44 +349,9 @@ function renderCopyPageInfo() {
   );
 }
 
-async function onSave() {
-  const page = state.page;
-  state.saving = true;
-  state.saveError = '';
-  state.saveStatus = '';
-  render();
-  try {
-    const { data, result } = await store.savePost({
-      id: page.id,
-      url: page.url,
-      excerpt: page.excerpt,
-      text: page.text,
-      labelIds: [...state.selection],
-    });
-    state.data = data;
-    state.saveStatus = result.removed ? 'Removed' : 'Saved ✓';
-    if (result.removed) state.wasSaved = false;
-  } catch (err) {
-    // Keep the selection so the user can retry.
-    state.saveError = errorMessage(err);
-  }
-  state.saving = false;
-  state.focus = 'save';
-  render();
-}
-
-// The popup's main screen: "Save this post" when the tab shows a single post (saving
-// elsewhere happens on the post itself), then the label list.
+// The Library's home: search and the label list.
 function renderHome() {
-  const page = state.page;
-  const onPost = page.kind === 'post' || page.kind === 'post-unidentified';
-  return h(
-    'div',
-    null,
-    onPost &&
-      h('section', { class: 'save-section' }, h('h1', { class: 'section-title' }, 'Save this post'), renderSave()),
-    renderLabels({ compact: onPost }),
-  );
+  return renderLabels();
 }
 
 function renderTip() {
@@ -571,9 +461,9 @@ function renderLabelRow(row, { pinned = false } = {}) {
   );
 }
 
-// The label list. In the popup it has the search box (results replace the list while
+// The label list. In the side panel it has the search box (results replace the list while
 // searching); in the full-page view it's the sidebar and search sits above it.
-function renderLabels({ compact = false, sidebar = false } = {}) {
+function renderLabels({ sidebar = false } = {}) {
   const rows = labelsWithCounts(state.data).map(r => ({ ...r, color: state.data.labels[r.id]?.color }));
   const pins = pinnedCount(state.data);
   const nothingSaved = Object.keys(state.data.posts).length === 0;
@@ -583,13 +473,12 @@ function renderLabels({ compact = false, sidebar = false } = {}) {
     null,
     h('h1', { class: 'section-title' }, 'Your labels'),
     !sidebar && !nothingSaved && renderSearch(),
-    // On a post page, "+ New label" lives in the Save section above.
-    !searching && !compact && renderNewLabel(),
+    !searching && renderNewLabel(),
     searching
       ? renderSearchResults()
       : h(
           'div',
-          { class: sidebar ? 'sidebar-list' : `scroll${compact ? '' : ' tall'}`, 'data-scroll': 'labels' },
+          { class: sidebar ? 'sidebar-list' : 'scroll tall', 'data-scroll': 'labels' },
           h(
             'ul',
             { class: 'list' },
@@ -709,7 +598,8 @@ function renderPostRow(post, { showLabels = false } = {}) {
         .filter(Boolean)
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
     : [];
-  const body = isPage ? post.text || post.excerpt : post.excerpt;
+  // The Library shows the whole post; the full-page view too.
+  const body = isPanel || isPage ? post.text || post.excerpt : post.excerpt;
   return h(
     'li',
     { class: 'post-row' },
@@ -726,7 +616,7 @@ function renderPostRow(post, { showLabels = false } = {}) {
         ),
       ),
       post.note && h('p', { class: 'note' }, post.note),
-      isPage &&
+      (isPanel || isPage) &&
         isPartial(post) &&
         h(
           'p',
@@ -932,7 +822,7 @@ function renderHelp() {
     h(
       'p',
       null,
-      'To save a post, click the Label button under it in your LinkedIn feed. Or open the post on its own page and click the Labels toolbar button.',
+      'To save a post, click the Label button under it on LinkedIn (or press the shortcut). Your Library, here, is where you find and organize what you saved.',
     ),
     state.shortcut !== null &&
       h(
@@ -978,14 +868,13 @@ function renderHelp() {
       h('button', { class: 'btn', onClick: onImportClick }, 'Import backup'),
     ),
     !isTab && h('p', { class: 'hint' }, 'Import opens in a new tab so you can choose a file.'),
-    state.page.tabId &&
-      h('p', { class: 'meta troubleshoot' }, 'Label buttons not showing on LinkedIn? ', renderCopyPageInfo()),
+    isPanel && h('p', { class: 'meta troubleshoot' }, 'Label buttons not showing on LinkedIn? ', renderCopyPageInfo()),
     state.helpError && h('div', { class: 'error', role: 'alert' }, state.helpError),
     state.helpMessage && h('div', { class: 'status', role: 'status' }, state.helpMessage),
     h(
       'p',
       { class: 'fine-print' },
-      'Labels is an independent tool and isn’t affiliated with or endorsed by LinkedIn. It adds a Label button to posts on linkedin.com and reads a post’s visible text only when you click Label, press the shortcut or click the toolbar button.',
+      'Labels is an independent tool and isn’t affiliated with or endorsed by LinkedIn. It adds a Label button to posts on linkedin.com and reads a post’s visible text only when you click Label or press the shortcut.',
     ),
   );
 }
@@ -1161,10 +1050,7 @@ function renderDialog() {
       try {
         const { data } = await store.deleteLabel(labelId);
         state.data = data;
-        state.selection?.delete(labelId);
         state.editSelection?.delete(labelId);
-        if (state.page?.id) state.wasSaved = Boolean(data.posts[state.page.id]);
-        state.saveStatus = '';
         go('labels');
       } catch (err) {
         state.dialog = null;
@@ -1218,7 +1104,7 @@ function onExport() {
 }
 
 function onImportClick() {
-  // Chrome closes the toolbar popup when a file picker opens, so import runs in a tab.
+  // Import runs in a tab, where the file picker can't close the page.
   if (!isTab) {
     chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?mode=tab#help') });
     window.close();
@@ -1276,33 +1162,9 @@ window.addEventListener('hashchange', () => {
   if (isTab && location.hash === '#help') go('help');
 });
 
-async function detectPage() {
-  if (isTab) return { kind: 'other' };
-  let tab;
-  try {
-    [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  } catch (err) {
-    console.warn('Labels: could not read the active tab', err);
-  }
-  const page = classifyUrl(tab?.url ?? '');
-  if (page.kind === 'linkedin-other') return { ...page, tabId: tab.id };
-  if (page.kind !== 'post') return page;
-
-  let text = '';
-  try {
-    const result = await runCapture(tab.id, page.id, 'capture');
-    text = result?.text ?? '';
-    console.info('Labels: preview source', result?.source);
-  } catch (err) {
-    // Saving still works with the "Open saved post" preview.
-    console.warn('Labels: could not read the post text', err);
-  }
-  return { ...page, tabId: tab.id, excerpt: makeExcerpt(text), text };
-}
-
 async function init() {
   if (isTab) document.body.classList.add(isPage ? 'page-mode' : 'tab-mode');
-  if (isPage) document.title = 'Labels';
+  if (isPanel) document.body.classList.add('panel-mode');
   chrome.commands
     .getAll()
     .then(commands => {
@@ -1310,23 +1172,7 @@ async function init() {
       render();
     })
     .catch(() => {});
-  const [data, page] = await Promise.all([store.load(), detectPage()]);
-  state.data = data;
-  state.page = page;
-  const existing = page.kind === 'post' && data.posts[page.id];
-  state.wasSaved = Boolean(existing);
-  if (existing) {
-    state.selection = new Set(existing.labelIds);
-    // Posts saved before a preview (or the full text) could be read get it the next time
-    // they're opened.
-    if ((!existing.excerpt && page.excerpt) || (page.text?.length ?? 0) > (existing.text?.length ?? 0)) {
-      try {
-        state.data = (await store.fillExcerpt(page.id, page.excerpt, page.text)).data;
-      } catch (err) {
-        console.warn('Labels: could not add the preview', err);
-      }
-    }
-  }
+  state.data = await store.load();
   const deepLabel = new URLSearchParams(location.search).get('label');
   if (isTab && deepLabel && labelName(state.data, deepLabel)) {
     state.view = 'label';
