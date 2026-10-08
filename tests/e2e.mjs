@@ -186,7 +186,7 @@ try {
     await createLabel(p, ' design ');
     assert.match(await p.locator('.error').textContent(), /already have a label called "Design"/);
     await p.getByLabel('New label name').press('Escape');
-    assert.deepEqual(await p.locator('.check-row span').allTextContents(), ['ai', 'Design']);
+    assert.deepEqual(await p.locator('.check-row span:not(.dot)').allTextContents(), ['ai', 'Design']);
     assert.equal(await p.locator('.check-row input:checked').count(), 2);
     await shot(p, '2-save-view');
     await p.getByRole('button', { name: 'Save', exact: true }).click();
@@ -362,7 +362,10 @@ try {
     assert.deepEqual(await labelsRows(p), ['Pinned:1', 'Launches:2']);
     await p.locator('.label-row', { hasText: 'Pinned' }).click();
     assert.equal(await p.locator('.header h2').textContent(), 'Pinned');
-    assert.equal(await p.getByRole('button', { name: 'Options', exact: true }).count(), 0, 'no label options');
+    await p.getByRole('button', { name: 'Options', exact: true }).click();
+    assert.deepEqual(await p.getByRole('menuitem').allTextContents(), ['Copy as list'], 'Pinned only offers copying');
+    await p.keyboard.press('Escape');
+    await p.locator('.menu').waitFor({ state: 'detached' });
     assert.deepEqual(await opened(), [second]);
     // Unpin from the post's menu.
     await p.getByRole('button', { name: 'Saved post options' }).click();
@@ -370,6 +373,86 @@ try {
     await p.getByText('No pinned posts.').waitFor();
     await p.getByRole('button', { name: 'Back' }).click();
     assert.deepEqual(await labelsRows(p), ['Launches:2'], 'Pinned row hides when empty');
+    await p.close();
+  });
+
+  await check('search, notes, label colors and copy as list in the popup', async () => {
+    const p = await openPopup(context, extId, FEED);
+    const search = p.getByRole('searchbox', { name: 'Search saved posts' });
+    await search.fill('design systems');
+    assert.equal(await p.locator('.results-count').textContent(), '1 post found');
+    assert.equal(await p.locator('.post-open').getAttribute('title'), POST_A);
+    assert.deepEqual(await p.locator('.chip').allTextContents(), ['Launches'], 'results show their labels');
+    await search.fill('zzzz nothing');
+    assert.equal(await p.locator('.results-count').textContent(), 'No saved posts match \u201Czzzz nothing\u201D.');
+    await p.getByRole('button', { name: 'Clear search' }).click();
+    assert.deepEqual(await labelsRows(p), ['Launches:2'], 'labels are back after clearing');
+
+    // Notes: add one from the post's menu; it shows in the list and is searchable.
+    await p.locator('.label-row', { hasText: 'Launches' }).click();
+    const rowA = p.locator('.post-row', { has: p.locator(`[title="${POST_A}"]`) });
+    await rowA.getByRole('button', { name: 'Saved post options' }).click();
+    await p.getByRole('menuitem', { name: 'Add note' }).click();
+    assert.equal(await p.evaluate(() => document.activeElement?.id), 'edit-note', 'note field is focused');
+    await p.getByLabel('Note').fill('Use in the Q3 deck');
+    await p.getByRole('button', { name: 'Save', exact: true }).click();
+    assert.equal(await rowA.locator('.note').textContent(), 'Use in the Q3 deck');
+    assert.equal((await storedData(p)).posts['urn:li:activity:7212345678901234567'].note, 'Use in the Q3 deck');
+    await rowA.getByRole('button', { name: 'Saved post options' }).click();
+    assert.equal(await p.getByRole('menuitem', { name: 'Edit note' }).count(), 1);
+    await p.keyboard.press('Escape');
+
+    // Color: pick one from the label's options; a dot shows next to the name.
+    await p.getByRole('button', { name: 'Options', exact: true }).click();
+    await p.getByRole('button', { name: 'Color blue' }).click();
+    assert.equal(Object.values((await storedData(p)).labels)[0].color, 'blue');
+    assert.equal(await p.locator('.header .dot').count(), 1);
+
+    // Copy as list.
+    await p.evaluate(() => {
+      navigator.clipboard.writeText = async text => (window.copiedText = text);
+    });
+    await p.getByRole('button', { name: 'Options', exact: true }).click();
+    await p.getByRole('menuitem', { name: 'Copy as list' }).click();
+    await p.locator('.toast', { hasText: 'Copied 2 links' }).waitFor();
+    const copied = await p.evaluate(() => window.copiedText);
+    assert.match(copied, /^- \[.+\]\(https:\/\/www\.linkedin\.com\/.+\)/);
+    assert.ok(copied.includes(`(${POST_A}) - Use in the Q3 deck`), 'notes ride along');
+
+    await p.getByRole('button', { name: 'Back' }).click();
+    assert.equal(await p.locator('.label-row .dot').count(), 1, 'color dot in the label list');
+    await search.fill('q3 deck');
+    assert.equal(await p.locator('.results-count').textContent(), '1 post found', 'notes are searchable');
+    await p.close();
+  });
+
+  await check('full-page view: sidebar of labels, full text, search', async () => {
+    const popup = await openPopup(context, extId, FEED);
+    const [p] = await Promise.all([
+      context.waitForEvent('page'),
+      popup.getByRole('button', { name: 'Open Labels in a tab' }).click(),
+    ]);
+    await popup.close();
+    assert.match(p.url(), /popup\.html\?mode=page$/);
+    await p.setViewportSize({ width: 1100, height: 800 });
+    await p.locator('.sidebar .label-row').first().waitFor();
+    assert.equal(await p.locator('.main .header h2').textContent(), 'Launches', 'opens on the first label');
+    assert.equal(await p.locator('.main .header-count').textContent(), '2 posts');
+    assert.equal(await p.locator('.main .back').count(), 0, 'no Back in the full view');
+    assert.equal(await p.locator('.label-item.active .name').textContent(), 'Launches');
+    const fullA = await p
+      .locator('.main .post-open', { has: p.locator('.excerpt') })
+      .evaluateAll(els => els.map(e => e.textContent));
+    assert.ok(
+      fullA.some(t => t.startsWith('Design systems')),
+      'shows the full text',
+    );
+    await shot(p, '13-full-page');
+    await p.getByRole('searchbox', { name: 'Search saved posts' }).fill('q3');
+    assert.equal(await p.locator('.main .section-title').textContent(), 'Search');
+    assert.equal(await p.locator('.main .results-count').textContent(), '1 post found');
+    await p.locator('.chip', { hasText: 'Launches' }).click();
+    assert.equal(await p.locator('.main .header h2').textContent(), 'Launches', 'chip opens the label');
     await p.close();
   });
 
@@ -394,7 +477,7 @@ try {
     await row.getByRole('button', { name: 'Delete label Gone' }).click();
     await p.getByRole('button', { name: 'Permanently delete it' }).click();
     assert.deepEqual(await labelsRows(p), ['Launches:2']);
-    assert.deepEqual(await p.locator('.check-row span').allTextContents(), ['Launches']);
+    assert.deepEqual(await p.locator('.check-row span:not(.dot)').allTextContents(), ['Launches']);
     await p.getByRole('button', { name: 'Saved \u2713' }).waitFor();
     await p.close();
     await tab.close();

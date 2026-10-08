@@ -88,6 +88,7 @@
     .pinned-row .pin-mark { display: inline-flex; width: 16px; margin-right: 10px; justify-content: center; color: #6d4fc2; }
     .pinned-row .pin-mark svg { width: 15px; height: 15px; }
     .pinned-row .pinned-name { flex: 1; font-weight: 500; }
+    .list .dot { flex: none; width: 9px; height: 9px; border-radius: 50%; margin-right: -2px; }
     .del-spacer { flex: none; width: 28px; margin-right: 8px; }
     .posts .pin {
       flex: none; display: grid; place-items: center; margin: 8px 0 0; width: 28px; height: 28px; padding: 0; border: 0;
@@ -178,6 +179,17 @@
   }
 
   const PINNED_ID = 'pinned';
+  // Same swatches as the popup (keys from LABEL_COLORS in lib/store.js).
+  const COLOR_HEX = {
+    purple: '#7c5cd6',
+    blue: '#3b82f6',
+    green: '#22a06b',
+    yellow: '#d9a400',
+    orange: '#f08c00',
+    red: '#e5484d',
+    pink: '#d6409f',
+    gray: '#8b8d98',
+  };
   function pinIcon(filled) {
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
@@ -694,6 +706,7 @@
                       renderPanel();
                     },
                   }),
+                  label.color && h('span', { class: 'dot', style: `background:${COLOR_HEX[label.color]}` }),
                   h('span', null, label.name),
                 ),
                 label.count > 0 &&

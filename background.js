@@ -12,6 +12,7 @@ function view(data, postId) {
       name: l.name,
       count: l.count,
       only: postsOnlyIn(data, l.id),
+      color: data.labels[l.id]?.color ?? null,
     })),
     post: postId ? (data.posts[postId] ?? null) : null,
     savedIds: Object.keys(data.posts),

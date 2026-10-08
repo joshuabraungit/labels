@@ -8,14 +8,21 @@ import {
   LabelsError,
   postsForLabel,
   sortedLabels,
+  LABEL_COLORS,
+  NOTE_MAX,
   pinnedCount,
   PINNED_ID,
+  postsAsMarkdown,
   postsOnlyIn,
+  searchPosts,
   STORAGE_KEY,
 } from './lib/store.js';
 
 const store = createStore(chrome.storage.local);
-const isTab = new URLSearchParams(location.search).get('mode') === 'tab';
+const mode = new URLSearchParams(location.search).get('mode');
+// 'tab': the popup UI in a tab (for import). 'page': the full-page view.
+const isPage = mode === 'page';
+const isTab = mode === 'tab' || isPage;
 const app = document.getElementById('app');
 const importInput = document.getElementById('import-file');
 
@@ -52,6 +59,25 @@ const trashIcon = () => svgIcon(['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 13h1
 const PIN_PATH = 'M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6z';
 const pinIcon = (filled = false) => svgIcon([PIN_PATH, 'M12 15v6'], filled);
 
+const searchIcon = () => svgIcon(['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M20 20l-4-4']);
+const expandIcon = () => svgIcon(['M14 4h6v6', 'M20 4l-8 8', 'M10 5H5v14h14v-5']);
+
+// Swatches for the stored color keys (LABEL_COLORS in lib/store.js).
+const COLOR_HEX = {
+  purple: '#7c5cd6',
+  blue: '#3b82f6',
+  green: '#22a06b',
+  yellow: '#d9a400',
+  orange: '#f08c00',
+  red: '#e5484d',
+  pink: '#d6409f',
+  gray: '#8b8d98',
+};
+
+function colorDot(color) {
+  return color ? h('span', { class: 'dot', style: `background:${COLOR_HEX[color]}`, 'aria-hidden': 'true' }) : null;
+}
+
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 const state = {
@@ -68,6 +94,10 @@ const state = {
   editPostId: null,
   editSelection: new Set(),
   editError: '',
+  editNote: '',
+  editReturn: 'label', // where Back/Save in the edit view go
+  query: '', // search box
+  toast: '', // short confirmation, e.g. 'Copied 5 links'
   menu: null, // { kind: 'label' | 'post', postId?, rect }
   dialog: null, // { kind: 'rename' | 'delete', value?, error? }
   undo: null, // { post, timer }: a just-removed post that can be put back
@@ -136,7 +166,19 @@ function render() {
 
   const views = { save: renderHome, labels: renderHome, label: renderLabel, edit: renderEdit, help: renderHelp };
   app.replaceChildren(renderTopbar());
-  app.append(h('div', { class: 'content', inert: Boolean(state.dialog) }, views[state.view]()));
+  if (isPage) {
+    pickPageLabel();
+    app.append(
+      h(
+        'div',
+        { class: 'content page-grid', inert: Boolean(state.dialog) },
+        h('aside', { class: 'sidebar' }, renderSearch(), renderLabels({ sidebar: true })),
+        h('main', { class: 'main' }, renderPageMain()),
+      ),
+    );
+  } else {
+    app.append(h('div', { class: 'content', inert: Boolean(state.dialog) }, views[state.view]()));
+  }
   if (state.menu) app.append(renderMenu());
   if (state.dialog) app.append(renderDialog());
 
@@ -157,15 +199,31 @@ function renderTopbar() {
     { class: 'topbar' },
     h('div', { class: 'brand' }, h('img', { src: 'icons/icon-32.png', alt: '' }), 'Labels'),
     h(
-      'button',
-      {
-        class: 'icon-btn',
-        'aria-label': 'Help',
-        title: 'Help',
-        'data-focus': 'help',
-        onClick: () => go('help', { helpReturn: state.view === 'help' ? state.helpReturn : state.view }),
-      },
-      '?',
+      'div',
+      { class: 'topbar-actions' },
+      !isPage &&
+        h(
+          'button',
+          {
+            class: 'icon-btn svg',
+            'aria-label': 'Open Labels in a tab',
+            title: 'Open Labels in a tab',
+            'data-focus': 'open-page',
+            onClick: () => chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?mode=page') }),
+          },
+          expandIcon(),
+        ),
+      h(
+        'button',
+        {
+          class: 'icon-btn',
+          'aria-label': 'Help',
+          title: 'Help',
+          'data-focus': 'help',
+          onClick: () => go('help', { helpReturn: state.view === 'help' ? state.helpReturn : state.view }),
+        },
+        '?',
+      ),
     ),
   );
 }
@@ -264,6 +322,7 @@ function renderChecklist(selection, onChange) {
                 render();
               },
             }),
+            colorDot(label.color),
             h('span', null, label.name),
           ),
         ),
@@ -414,81 +473,154 @@ function renderTip() {
   );
 }
 
-function renderLabels({ compact = false } = {}) {
-  const rows = labelsWithCounts(state.data);
+function renderSearch() {
+  const clear = () => {
+    state.query = '';
+    state.focus = 'search';
+    render();
+  };
+  return h(
+    'div',
+    { class: 'search' },
+    h('span', { class: 'search-icon' }, searchIcon()),
+    h('input', {
+      class: 'field search-input',
+      type: 'text',
+      role: 'searchbox',
+      placeholder: 'Search saved posts',
+      'aria-label': 'Search saved posts',
+      value: state.query,
+      'data-focus': 'search',
+      onInput: e => {
+        state.query = e.target.value;
+        render();
+      },
+      onKeydown: e => e.key === 'Escape' && state.query && (e.stopPropagation(), clear()),
+    }),
+    state.query &&
+      h('button', { class: 'search-clear', type: 'button', 'aria-label': 'Clear search', onClick: clear }, '×'),
+  );
+}
+
+function renderSearchResults() {
+  const results = searchPosts(state.data, state.query);
+  return h(
+    'div',
+    { class: 'results' },
+    h(
+      'p',
+      { class: 'meta results-count', role: 'status' },
+      results.length ? `${plural(results.length, 'post')} found` : `No saved posts match “${state.query.trim()}”.`,
+    ),
+    results.length > 0 &&
+      h(
+        'div',
+        { class: `scroll${isPage ? '' : ' tall'}`, 'data-scroll': 'search' },
+        h(
+          'ul',
+          { class: 'list' },
+          results.map(post => renderPostRow(post, { showLabels: true })),
+        ),
+      ),
+  );
+}
+
+function renderLabelRow(row, { pinned = false } = {}) {
+  const active = isPage && !state.query && ['label', 'labels'].includes(state.view) && state.labelId === row.id;
+  return h(
+    'li',
+    { class: `label-item${active ? ' active' : ''}` },
+    h(
+      'button',
+      {
+        class: `label-row${pinned ? ' pinned-row' : ''}`,
+        'data-focus': `label-${row.id}`,
+        'aria-current': active ? 'true' : null,
+        onClick: () => go('label', { labelId: row.id, query: '' }),
+      },
+      pinned ? h('span', { class: 'pin-mark' }, pinIcon(true)) : colorDot(row.color),
+      h('span', { class: 'name' }, row.name),
+      h(
+        'span',
+        { class: 'count', 'aria-label': `${row.count} ${pinned ? 'pinned' : 'saved'} posts` },
+        String(row.count),
+      ),
+      h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
+    ),
+    pinned
+      ? h('span', { class: 'del-spacer', 'aria-hidden': 'true' })
+      : h(
+          'button',
+          {
+            class: 'del',
+            title: 'Delete label',
+            'aria-label': `Delete label ${row.name}`,
+            'data-focus': `del-${row.id}`,
+            onClick: () => {
+              state.dialog = { kind: 'delete', labelId: row.id };
+              state.focus = 'dialog-cancel';
+              render();
+            },
+          },
+          trashIcon(),
+        ),
+  );
+}
+
+// The label list. In the popup it has the search box (results replace the list while
+// searching); in the full-page view it's the sidebar and search sits above it.
+function renderLabels({ compact = false, sidebar = false } = {}) {
+  const rows = labelsWithCounts(state.data).map(r => ({ ...r, color: state.data.labels[r.id]?.color }));
+  const pins = pinnedCount(state.data);
   const nothingSaved = Object.keys(state.data.posts).length === 0;
+  const searching = !sidebar && state.query;
   return h(
     'div',
     null,
     h('h1', { class: 'section-title' }, 'Your labels'),
+    !sidebar && !nothingSaved && renderSearch(),
     // On a post page, "+ New label" lives in the Save section above.
-    !compact && renderNewLabel(),
-    h(
-      'div',
-      { class: `scroll${compact ? '' : ' tall'}`, 'data-scroll': 'labels' },
-      h(
-        'ul',
-        { class: 'list' },
-        // Pinned shows first, like a label, once anything is pinned.
-        pinnedCount(state.data) > 0 &&
+    !searching && !compact && renderNewLabel(),
+    searching
+      ? renderSearchResults()
+      : h(
+          'div',
+          { class: sidebar ? 'sidebar-list' : `scroll${compact ? '' : ' tall'}`, 'data-scroll': 'labels' },
           h(
-            'li',
-            { class: 'label-item' },
-            h(
-              'button',
-              {
-                class: 'label-row pinned-row',
-                'data-focus': `label-${PINNED_ID}`,
-                onClick: () => go('label', { labelId: PINNED_ID }),
-              },
-              h('span', { class: 'pin-mark' }, pinIcon(true)),
-              h('span', { class: 'name' }, 'Pinned'),
-              h(
-                'span',
-                { class: 'count', 'aria-label': `${pinnedCount(state.data)} pinned posts` },
-                String(pinnedCount(state.data)),
-              ),
-              h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
-            ),
-            h('span', { class: 'del-spacer', 'aria-hidden': 'true' }),
-          ),
-        rows.map(row =>
-          h(
-            'li',
-            { class: 'label-item' },
-            h(
-              'button',
-              {
-                class: 'label-row',
-                'data-focus': `label-${row.id}`,
-                onClick: () => go('label', { labelId: row.id }),
-              },
-              h('span', { class: 'name' }, row.name),
-              h('span', { class: 'count', 'aria-label': `${row.count} saved posts` }, String(row.count)),
-              h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
-            ),
-            h(
-              'button',
-              {
-                class: 'del',
-                title: 'Delete label',
-                'aria-label': `Delete label ${row.name}`,
-                'data-focus': `del-${row.id}`,
-                onClick: () => {
-                  state.dialog = { kind: 'delete', labelId: row.id };
-                  state.focus = 'dialog-cancel';
-                  render();
-                },
-              },
-              trashIcon(),
-            ),
+            'ul',
+            { class: 'list' },
+            // Pinned shows first, like a label, once anything is pinned.
+            pins > 0 && renderLabelRow({ id: PINNED_ID, name: 'Pinned', count: pins }, { pinned: true }),
+            rows.map(row => renderLabelRow(row)),
           ),
         ),
-      ),
-    ),
-    nothingSaved && h('p', { class: 'hint' }, 'Nothing saved yet.'),
-    renderTip(),
+    !searching && nothingSaved && h('p', { class: 'hint' }, 'Nothing saved yet.'),
+    !searching && !sidebar && renderTip(),
   );
+}
+
+// The full-page view always shows a label: the one picked, else Pinned, else the first.
+function pickPageLabel() {
+  const valid = id => (id === PINNED_ID ? pinnedCount(state.data) > 0 : Boolean(state.data.labels[id]));
+  if (!valid(state.labelId)) {
+    state.labelId = pinnedCount(state.data) ? PINNED_ID : (sortedLabels(state.data)[0]?.id ?? null);
+  }
+}
+
+// The full-page view's main column: search results, a label's posts, help or editing.
+function renderPageMain() {
+  if (state.view === 'help') return renderHelp();
+  if (state.view === 'edit') return renderEdit();
+  if (state.query) return h('div', null, h('h1', { class: 'section-title' }, 'Search'), renderSearchResults());
+  if (!state.labelId) {
+    return h(
+      'div',
+      { class: 'page-empty' },
+      h('h1', { class: 'section-title' }, 'Nothing saved yet'),
+      h('p', null, 'Click Label under a post in your LinkedIn feed and it will show up here.'),
+    );
+  }
+  return renderLabel();
 }
 
 // Removes right away, no confirm. An Undo bar shows for a few seconds instead.
@@ -564,9 +696,97 @@ function renderPinButton(post) {
   );
 }
 
+// One saved post: its preview (the full text in the full-page view), note, and, in search
+// results and Pinned, its labels.
+function renderPostRow(post, { showLabels = false } = {}) {
+  const labels = showLabels
+    ? post.labelIds
+        .map(id => state.data.labels[id])
+        .filter(Boolean)
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    : [];
+  const body = isPage ? post.text || post.excerpt : post.excerpt;
+  return h(
+    'li',
+    { class: 'post-row' },
+    h(
+      'div',
+      { class: 'post-main' },
+      h(
+        'button',
+        { class: 'post-open', title: post.url, onClick: () => openPost(post.url) },
+        h(
+          'span',
+          { class: `excerpt${body ? '' : ' fallback'}` },
+          body || `${FALLBACK_PREVIEW} · saved ${savedDate(post.savedAt)}`,
+        ),
+      ),
+      post.note && h('p', { class: 'note' }, post.note),
+      labels.length > 0 &&
+        h(
+          'div',
+          { class: 'chips' },
+          labels.map(l =>
+            h(
+              'button',
+              { class: 'chip', type: 'button', onClick: () => go('label', { labelId: l.id, query: '' }) },
+              colorDot(l.color),
+              l.name,
+            ),
+          ),
+        ),
+    ),
+    renderPinButton(post),
+    h(
+      'button',
+      {
+        class: 'icon-btn',
+        'aria-label': 'Saved post options',
+        title: 'More',
+        'aria-haspopup': 'menu',
+        'data-focus': `post-menu-${post.id}`,
+        onClick: e => toggleMenu(e, { kind: 'post', postId: post.id }),
+      },
+      '⋯',
+    ),
+  );
+}
+
+function showToast(text) {
+  clearTimeout(state.toastTimer);
+  state.toast = text;
+  state.toastTimer = setTimeout(() => {
+    state.toast = '';
+    render();
+  }, 2500);
+  render();
+}
+
+async function copyList(labelId) {
+  const n = postsForLabel(state.data, labelId).length;
+  try {
+    await navigator.clipboard.writeText(postsAsMarkdown(state.data, labelId));
+    showToast(`Copied ${plural(n, 'link')}`);
+  } catch (err) {
+    console.warn('Labels: could not copy', err);
+    showToast('Couldn’t copy the list.');
+  }
+}
+
+async function setColor(labelId, color) {
+  try {
+    const { data } = await store.setLabelColor(labelId, color);
+    state.data = data;
+  } catch (err) {
+    alert(errorMessage(err));
+  }
+  render();
+}
+
 function renderLabel() {
   const isPinned = state.labelId === PINNED_ID;
-  const name = isPinned ? 'Pinned' : labelName(state.data, state.labelId);
+  const label = state.data.labels[state.labelId];
+  const name = isPinned ? 'Pinned' : label?.name;
   if (!name) {
     state.view = 'labels';
     return renderHome();
@@ -579,58 +799,34 @@ function renderLabel() {
     h(
       'div',
       { class: 'header' },
-      h('button', { class: 'icon-btn back', 'aria-label': 'Back', title: 'Back', onClick: () => go('labels') }, '‹'),
+      !isPage &&
+        h('button', { class: 'icon-btn back', 'aria-label': 'Back', title: 'Back', onClick: () => go('labels') }, '‹'),
+      isPinned ? h('span', { class: 'pin-mark' }, pinIcon(true)) : colorDot(label.color),
       h('h2', { title: name }, name),
-      !isPinned &&
-        h(
-          'button',
-          {
-            class: 'icon-btn',
-            'aria-label': 'Options',
-            title: 'Options',
-            'aria-haspopup': 'menu',
-            'aria-expanded': String(state.menu?.kind === 'label'),
-            'data-focus': 'label-options',
-            onClick: e => toggleMenu(e, { kind: 'label' }),
-          },
-          '•••',
-        ),
+      isPage && h('span', { class: 'header-count' }, plural(posts.length, 'post')),
+      h(
+        'button',
+        {
+          class: 'icon-btn',
+          'aria-label': 'Options',
+          title: 'Options',
+          'aria-haspopup': 'menu',
+          'aria-expanded': String(state.menu?.kind === 'label'),
+          'data-focus': 'label-options',
+          onClick: e => toggleMenu(e, { kind: 'label' }),
+        },
+        '•••',
+      ),
     ),
+    state.toast && h('p', { class: 'toast', role: 'status' }, state.toast),
     posts.length
       ? h(
           'div',
-          { class: 'scroll tall', 'data-scroll': `posts-${state.labelId}` },
+          { class: `scroll${isPage ? '' : ' tall'}`, 'data-scroll': `posts-${state.labelId}` },
           h(
             'ul',
             { class: 'list' },
-            posts.map(post =>
-              h(
-                'li',
-                { class: 'post-row' },
-                h(
-                  'button',
-                  { class: 'post-open', title: post.url, onClick: () => openPost(post.url) },
-                  h(
-                    'span',
-                    { class: `excerpt${post.excerpt ? '' : ' fallback'}` },
-                    post.excerpt || `${FALLBACK_PREVIEW} \u00B7 saved ${savedDate(post.savedAt)}`,
-                  ),
-                ),
-                renderPinButton(post),
-                h(
-                  'button',
-                  {
-                    class: 'icon-btn',
-                    'aria-label': 'Saved post options',
-                    title: 'More',
-                    'aria-haspopup': 'menu',
-                    'data-focus': `post-menu-${post.id}`,
-                    onClick: e => toggleMenu(e, { kind: 'post', postId: post.id }),
-                  },
-                  '⋯',
-                ),
-              ),
-            ),
+            posts.map(post => renderPostRow(post, { showLabels: isPinned })),
           ),
         )
       : h('p', { class: 'empty' }, isPinned ? 'No pinned posts.' : 'No saved posts with this label yet.'),
@@ -638,18 +834,33 @@ function renderLabel() {
   );
 }
 
+function openEdit(postId, focus) {
+  const post = state.data.posts[postId];
+  go('edit', {
+    editPostId: postId,
+    editSelection: new Set(post?.labelIds ?? []),
+    editNote: post?.note ?? '',
+    editError: '',
+    editReturn: state.view === 'edit' ? state.editReturn : state.view,
+    focus: focus ?? null,
+  });
+}
+
 function renderEdit() {
   const post = state.data.posts[state.editPostId];
+  const back = () => go(state.editReturn || 'label');
   if (!post) {
-    state.view = 'label';
-    return renderLabel();
+    state.view = state.editReturn || 'label';
+    return isPage ? renderPageMain() : state.view === 'label' ? renderLabel() : renderHome();
   }
   const save = async () => {
     state.editError = '';
     try {
-      const { data } = await store.setPostLabels(post.id, [...state.editSelection]);
+      let { data } = await store.setPostLabels(post.id, [...state.editSelection]);
+      // No labels left removes the post, note and all.
+      if (data.posts[post.id]) ({ data } = await store.setNote(post.id, state.editNote));
       state.data = data;
-      go('label');
+      back();
     } catch (err) {
       state.editError = errorMessage(err);
       render();
@@ -661,10 +872,22 @@ function renderEdit() {
     h(
       'div',
       { class: 'header' },
-      h('button', { class: 'icon-btn back', 'aria-label': 'Back', title: 'Back', onClick: () => go('label') }, '‹'),
-      h('h2', null, 'Edit labels'),
+      h('button', { class: 'icon-btn back', 'aria-label': 'Back', title: 'Back', onClick: back }, '‹'),
+      h('h2', null, 'Edit post'),
     ),
     renderPreview(post.excerpt),
+    h('label', { class: 'field-label', for: 'edit-note' }, 'Note'),
+    h('textarea', {
+      id: 'edit-note',
+      class: 'field note-field',
+      rows: '2',
+      maxlength: String(NOTE_MAX),
+      placeholder: 'Why you saved it, how you’ll use it…',
+      value: state.editNote,
+      'data-focus': 'edit-note',
+      onInput: e => (state.editNote = e.target.value),
+    }),
+    h('p', { class: 'field-label' }, 'Labels'),
     renderNewLabel(label => state.editSelection.add(label.id)),
     renderChecklist(state.editSelection),
     !state.editSelection.size && h('p', { class: 'hint' }, 'No labels ticked, so this removes the post from Labels.'),
@@ -774,11 +997,39 @@ function renderMenu() {
       text,
     );
 
+  if (m.kind === 'label' && state.labelId === PINNED_ID) {
+    return h(
+      'div',
+      { class: 'menu', role: 'menu' },
+      item('Copy as list', () => copyList(PINNED_ID)),
+    );
+  }
   if (m.kind === 'label') {
+    const current = state.data.labels[state.labelId]?.color ?? null;
     return h(
       'div',
       { class: 'menu', role: 'menu' },
       h('div', { class: 'menu-caption' }, 'EDIT THIS LABEL'),
+      h(
+        'div',
+        { class: 'swatches', role: 'group', 'aria-label': 'Label color' },
+        [null, ...LABEL_COLORS].map(color =>
+          h('button', {
+            class: `swatch${color === current ? ' on' : ''}${color ? '' : ' none'}`,
+            type: 'button',
+            title: color ? color[0].toUpperCase() + color.slice(1) : 'No color',
+            'aria-label': color ? `Color ${color}` : 'No color',
+            'aria-pressed': String(color === current),
+            style: color ? `background:${COLOR_HEX[color]}` : null,
+            onClick: e => {
+              e.stopPropagation();
+              state.menu = null;
+              setColor(state.labelId, color);
+            },
+          }),
+        ),
+      ),
+      item('Copy as list', () => copyList(state.labelId)),
       item('Rename', () => {
         state.dialog = { kind: 'rename', value: labelName(state.data, state.labelId), error: '' };
         state.focus = 'dialog-input';
@@ -799,10 +1050,8 @@ function renderMenu() {
     'div',
     { class: 'menu', role: 'menu' },
     item(state.data.posts[m.postId]?.pinnedAt ? 'Unpin' : 'Pin', () => togglePin(m.postId)),
-    item('Edit labels', () => {
-      const post = state.data.posts[m.postId];
-      go('edit', { editPostId: m.postId, editSelection: new Set(post?.labelIds ?? []), editError: '' });
-    }),
+    item(state.data.posts[m.postId]?.note ? 'Edit note' : 'Add note', () => openEdit(m.postId, 'edit-note')),
+    item('Edit labels', () => openEdit(m.postId)),
     item('Remove saved post', () => removePost(m.postId), true),
   );
 }
@@ -1033,7 +1282,8 @@ async function detectPage() {
 }
 
 async function init() {
-  if (isTab) document.body.classList.add('tab-mode');
+  if (isTab) document.body.classList.add(isPage ? 'page-mode' : 'tab-mode');
+  if (isPage) document.title = 'Labels';
   chrome.commands
     .getAll()
     .then(commands => {
