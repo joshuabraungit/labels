@@ -828,9 +828,14 @@ kbd {
   padding: 4px 10px 10px;
 }
 
-.swatch {
+.swatch,
+.menu .swatches .swatch {
+  display: inline-block;
+  flex: none;
   width: 18px;
   height: 18px;
+  min-height: 0;
+  margin: 0;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -838,6 +843,7 @@ kbd {
   cursor: pointer;
 }
 
+.menu .swatches .swatch.none,
 .swatch.none {
   background: linear-gradient(135deg, #fff 44%, #c9c8d0 44% 56%, #fff 56%);
 }

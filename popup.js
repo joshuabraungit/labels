@@ -938,6 +938,9 @@ function renderHelp() {
     h(
       'ul',
       null,
+      h('li', null, 'Search finds posts by their full text, your notes and label names.'),
+      h('li', null, 'Use a post\u2019s \u22EF menu to pin it, add a note or edit its labels.'),
+      h('li', null, 'On LinkedIn\u2019s Saved posts page, use Select posts to label to label many at once.'),
       h('li', null, 'Saves are stored in this Chrome profile.'),
       h('li', null, 'They do not automatically sync between devices.'),
       h('li', null, 'Uninstalling the extension can remove local data. Export a backup to keep a copy.'),

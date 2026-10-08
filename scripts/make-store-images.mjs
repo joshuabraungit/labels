@@ -17,12 +17,12 @@ const profile = mkdtempSync(join(process.env.STORE_TMP || tmpdir(), 'labels-stor
 const day = 86400000;
 const now = Date.now();
 const L = {
-  cold: { id: 'l_cold', name: 'Cold email', createdAt: now },
-  disc: { id: 'l_disc', name: 'Discovery calls', createdAt: now },
-  hire: { id: 'l_hire', name: 'Hiring', createdAt: now },
-  swipe: { id: 'l_swipe', name: 'Swipe file', createdAt: now },
-  write: { id: 'l_write', name: 'Writing tips', createdAt: now },
-  ai: { id: 'l_ai', name: 'AI for sales', createdAt: now },
+  cold: { id: 'l_cold', name: 'Cold email', createdAt: now, color: 'purple' },
+  disc: { id: 'l_disc', name: 'Discovery calls', createdAt: now, color: 'blue' },
+  hire: { id: 'l_hire', name: 'Hiring', createdAt: now, color: 'green' },
+  swipe: { id: 'l_swipe', name: 'Swipe file', createdAt: now, color: 'orange' },
+  write: { id: 'l_write', name: 'Writing tips', createdAt: now, color: 'pink' },
+  ai: { id: 'l_ai', name: 'AI for sales', createdAt: now, color: 'yellow' },
 };
 const post = (n, excerpt, labelIds, ageDays) => ({
   id: `urn:li:activity:74000000000000000${String(n).padStart(2, '0')}`,
@@ -70,6 +70,16 @@ const posts = [
   post(10, 'Open saved post placeholder', ['l_swipe'], 11),
 ];
 posts[9].excerpt = '';
+// Full text, a note and a pin, as a real library would have.
+posts[0].text =
+  'Stop opening cold emails with "I hope this finds you well."\n\nLead with the problem you noticed and why it matters to them now. One line on the trigger, one on the proof, one easy question.\n\nThe best replies I get come from emails that read like a note from a colleague, not a sequence.';
+posts[0].note = 'Use this opener framework for the Q3 outbound push';
+posts[0].pinnedAt = now;
+posts[1].text =
+  'Three-line cold email that booked 14 meetings last quarter: the trigger, the proof, one easy question.\n\nTemplate inside. Steal it, tweak the trigger for your market, and keep it under 75 words.';
+posts[1].pinnedAt = now - 1000;
+posts[2].text =
+  'Your first line decides whether the rest gets read. Here are 9 openers that sound like a person, not a sequence.';
 const data = {
   version: 1,
   labels: Object.fromEntries(Object.values(L).map(l => [l.id, l])),
@@ -98,15 +108,29 @@ try {
   await page.locator('.label-row').first().waitFor();
   const shotEl = async sel => `data:image/png;base64,${(await page.locator(sel).screenshot()).toString('base64')}`;
 
-  const labelsView = await shotEl('#app');
   await page.locator('.label-row', { hasText: 'Cold email' }).click();
   await page.locator('.post-open').first().waitFor();
   const labelView = await shotEl('#app');
+  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByRole('searchbox', { name: 'Search saved posts' }).fill('cold email');
+  await page.locator('.results-count').waitFor();
+  const searchView = await shotEl('#app');
+  await page.getByRole('button', { name: 'Clear search' }).click();
+  await page.locator('.label-row', { hasText: 'Cold email' }).click();
   await page.getByRole('button', { name: 'Options', exact: true }).click();
-  const optionsView = await page.screenshot({ clip: { x: 0, y: 0, width: 360, height: 330 } });
+  const optionsView = await page.screenshot({ clip: { x: 0, y: 0, width: 360, height: 400 } });
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Help' }).click();
   const helpView = await shotEl('#app');
+
+  // The full-page view.
+  const full = await context.newPage();
+  await full.setViewportSize({ width: 1100, height: 720 });
+  await full.goto(`chrome-extension://${extId}/popup.html?mode=page`);
+  await full.locator('.sidebar .label-row', { hasText: 'Cold email' }).click();
+  await full.locator('.main .post-open').first().waitFor();
+  const fullView = `data:image/png;base64,${(await full.screenshot()).toString('base64')}`;
+  await full.close();
 
   // The Label button and picker on a sample feed.
   const feed = await context.newPage();
@@ -170,9 +194,9 @@ try {
     1280,
     800,
     slide(
-      'Your posts, sorted your way',
-      'Every label in one list, A to Z, with a count of saved posts. Click one to see its posts.',
-      `<img src="${labelsView}" style="width:380px">`,
+      'Your whole library in one view',
+      'Open Labels in a tab: labels on the left, full posts, notes and pins on the right.',
+      `<img src="${fullView}" style="width:720px">`,
     ),
   );
   await render(
@@ -181,8 +205,8 @@ try {
     800,
     slide(
       'Find it again in seconds',
-      'Open a label to see its posts, newest first. Click a preview to open the original post.',
-      `<img src="${labelView}" style="width:380px">`,
+      'Search the full text of every post you saved, plus your notes and labels.',
+      `<img src="${searchView}" style="width:380px">`,
     ),
   );
   await render(
@@ -190,8 +214,8 @@ try {
     1280,
     800,
     slide(
-      'Rename, delete, tidy up',
-      'Change a post’s labels anytime, rename a label, or delete the ones you’re done with.',
+      'Color, pin, share',
+      'Color your labels, pin the posts that matter, and copy any label as a list to share.',
       `<img src="${options}" style="width:380px">`,
     ),
   );

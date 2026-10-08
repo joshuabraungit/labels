@@ -1,6 +1,6 @@
 # Privacy Policy for Labels
 
-_Last updated: October 7, 2026_
+_Last updated: October 8, 2026_
 
 Labels is a Chrome extension that lets you save LinkedIn posts with your own labels and find them again later. This policy explains what information Labels handles and what happens to it.
 
@@ -11,7 +11,8 @@ Labels is a Chrome extension that lets you save LinkedIn posts with your own lab
 When you save a post, Labels stores the following in your browser's local extension storage (`chrome.storage.local`):
 
 - The post's link and LinkedIn post ID
-- A short text preview of the post (up to 160 characters of its visible text)
+- A short text preview of the post (up to 160 characters of its visible text) and the post's full visible text (up to 4,000 characters), used for searching your saves
+- Notes you write about a post, and the colors you pick for your labels
 - The labels you created and which posts you assigned them to
 - The date and time you saved each post
 
@@ -19,7 +20,7 @@ That's all. Labels does not store or read comments, the post author's name or pr
 
 ## When Labels reads page content
 
-- **Label buttons:** on www.linkedin.com, Labels adds a small Label button under posts. It reads a post's link and visible text **only when you click that post's Label button or press the Labels keyboard shortcut**, and only for that one post.
+- **Label buttons:** on www.linkedin.com, Labels adds a small Label button under posts. It reads a post's link and visible text **only when you click that post's Label button or press the Labels keyboard shortcut**, and only for that one post. On LinkedIn's Saved posts page, if you select several posts and click **Label N posts**, it reads the text of just the posts you selected.
 - **Toolbar icon:** when you click the Labels icon while viewing a single LinkedIn post, Labels reads that page's link and the post's visible text so you can save it.
 - **Copy page info (optional, for troubleshooting):** if you click this link in the popup, Labels copies an outline of the page's layout to your clipboard. The outline contains tag and class names and text lengths only, with no post text, names or links. It goes only to your clipboard, and you decide whether to share it.
 

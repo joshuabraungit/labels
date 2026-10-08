@@ -6,7 +6,7 @@ A small Chrome extension (Manifest V3) for saving LinkedIn posts with your own l
 
 In the picker, labels that already have posts show a count like `3 ›`. Click it to see that label's posts right in the picker (click one to open the original post in a new tab). Each row has a **✕** that removes the post from that label. Its other labels stay; if it was the post's last label, the saved post is deleted. **‹ Back** or **Esc** returns to the picker. Clicking the label name still just ticks the box.
 
-**Posts you saved with LinkedIn's own Save button:** open LinkedIn's Saved posts page (`linkedin.com/my-items/saved-posts/`). Each post there gets a Label button next to its ••• menu, so you can work through your existing saves and label them one at a time. Labels doesn't import them automatically and doesn't change LinkedIn's saved list.
+**Posts you saved with LinkedIn's own Save button:** open LinkedIn's Saved posts page (`linkedin.com/my-items/saved-posts/`). Each post there gets a Label button next to its ••• menu. To label many at once, click **Select posts to label** in the bar at the bottom, tick posts (or **Select all**), click **Label N posts** and pick labels; they're added to every selected post. Labels doesn't import them automatically and doesn't change LinkedIn's saved list.
 
 **Or from the keyboard:** press **Alt+Shift+L** (⌥⇧L on Mac) to open the picker for the post under your mouse, or the one filling most of the screen. That post is outlined in purple while the picker is open. Then type to filter your labels: **Enter** ticks the highlighted one (↑/↓ to move), typing a name that doesn't exist offers **Create "name"**, **Backspace** in the empty box unticks the last label you added, and **Enter** on an empty box (or **Ctrl/⌘+Enter** anytime) saves, shows **Saved ✓** with the labels for a moment, then closes by itself (move the mouse over it or press a key to keep it open). **Esc** closes without saving. Change the shortcut at `chrome://extensions/shortcuts`. Off LinkedIn, the shortcut opens the Labels popup.
 
@@ -14,13 +14,15 @@ In the picker, labels that already have posts show a count like `3 ›`. Click i
 
 The toolbar popup opens to **Your labels**. "Save this post" only appears there when the tab shows a single post; on the feed you save with the Label buttons or the shortcut.
 
-**Find:** click Labels → Your labels → click a label → click a preview to open the original post.
+**Find:** click Labels → Your labels → click a label → click a preview to open the original post. Or type in **Search saved posts**: it looks through each post's full text, your notes and label names. The ↗ button in the popup opens a **full-page view** in a tab, with your labels on the left and full post text on the right.
+
+**Feed buttons** show the post's labels once it's saved (for example **Cold email** or **Cold email +2**; hover for the full list).
 
 Labels uses its own save action. It doesn't touch LinkedIn's Save button or Saved posts list, and it doesn't import posts you saved on LinkedIn before.
 
 ## Install (unpacked)
 
-1. Download `release/labels-extension-1.4.3.zip` and unzip it. You should get a folder with `manifest.json` at the top.
+1. Download `release/labels-extension-1.8.0.zip` and unzip it. You should get a folder with `manifest.json` at the top.
 2. In Chrome, go to `chrome://extensions`.
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and pick the unzipped folder.
@@ -41,6 +43,9 @@ To update, unzip the new version over the same folder and click the reload icon 
 - **Stable ID and link.** The post's URN (for example `urn:li:activity:7212345678901234567`) is the record ID, so saving the same post again updates it instead of creating a duplicate. Query strings and fragments (`utm_source`, `rcm`, `#comments`, …) are stripped from the stored link.
 - **Excerpt.** When you click the toolbar button, a one-off script reads the visible text of that one post: no comments, author info, images or other posts. Line breaks become spaces and the excerpt stops at a word boundary within 160 characters, with `…` if it was cut. It tries LinkedIn's known post-text elements first, then the page's own description of that post, then a layout-based search between the post header and its reactions bar, and finally the tab title (with the author's name removed). If nothing is found (image-only posts, a LinkedIn layout it doesn't recognize), you can still save: the preview reads **Open saved post · saved <date>**, and it fills in automatically the next time you open that post and click Labels. The Save view also offers **Copy page info**, a text-free outline of the page layout (no post text or names) that can be shared to adjust the reader.
 - **If the link can't be identified** (a post-looking page without a usable ID), saving is blocked with an error.
+- **Full text.** Besides the 160-character preview, Labels keeps the post's full visible text (up to 4,000 characters) for search and the full-page view. A collapsed post ("…see more") gives less text; a later, longer capture replaces it, a shorter one never does.
+- **Notes.** Use **Add note** in a post's ⋯ menu for a line about why you saved it. Notes show under the preview, are searchable, and are kept in backups and copied lists.
+- **Label colors and Copy as list.** A label's ••• menu has color swatches (shown as dots everywhere the label appears) and **Copy as list**, which copies its posts as Markdown links (with notes) to paste into a doc or chat.
 - **Pinned posts.** Hover a post in any label's list (popup or picker) and click the pin icon, or use **Pin** in a post's ⋯ menu. Pinned posts sit at the top of every label they're in, and a **Pinned** row at the top of your labels lists them all. Pins are kept in backups.
 - **Every saved post has at least one label.** Save stays greyed out until you pick or create one. Untick all of a saved post's labels and the button turns into **Remove from Labels**.
 - **Labels** are unique ignoring capitalization and surrounding spaces.
