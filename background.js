@@ -72,6 +72,17 @@ const handlers = {
     return { ...view(data, currentPostId), posts: labelPostRows(data, labelId) };
   },
 
+  // Adds labels to several posts at once (the Saved posts page's "select posts").
+  async labelMany({ posts, labelIds }) {
+    const records = (Array.isArray(posts) ? posts : []).flatMap(({ postId, text }) => {
+      const page = classifyUrl(`https://www.linkedin.com/feed/update/${postId}/`);
+      if (page.kind !== 'post' || page.id !== postId) return [];
+      return [{ id: page.id, url: page.url, excerpt: makeExcerpt(text), text }];
+    });
+    const { data, result } = await store.labelMany(records, labelIds);
+    return { ...view(data, null), ...result };
+  },
+
   async getState({ postId }) {
     return view(await store.load(), postId);
   },

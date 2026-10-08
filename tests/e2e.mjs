@@ -977,6 +977,51 @@ try {
     await saved.close();
   });
 
+  await check("LinkedIn's Saved posts page: select several posts and label them at once", async () => {
+    const saved = await context.newPage();
+    await saved.setViewportSize({ width: 1100, height: 900 });
+    await saved.goto(SAVED);
+    const P1 = 'urn:li:activity:7340000000000000001';
+    const P2 = 'urn:li:activity:7340000000000000002';
+    await feedButton(saved, P2).waitFor();
+    const bar = saved.locator('[data-labels-ui="bulk"] .bar');
+    const pick = id => saved.locator(`[data-labels-post="${id}"] .pick`);
+    assert.equal(await pick(P1).isVisible(), false, 'no checkboxes until selecting');
+    await bar.getByRole('button', { name: 'Select posts to label' }).click();
+    await pick(P1).check();
+    assert.equal(await bar.locator('.count').textContent(), '1 selected');
+    await bar.getByRole('button', { name: 'Select all' }).click();
+    assert.equal(await bar.locator('.count').textContent(), '2 selected');
+    await shot(saved, '14-bulk-select');
+    await bar.getByRole('button', { name: 'Label 2 posts' }).click();
+    assert.equal(await panel(saved).locator('.head h2').textContent(), 'Label 2 posts');
+    await panel(saved).locator('label', { hasText: 'Launches' }).locator('input').check();
+    await panel(saved).getByRole('button', { name: 'Label 2 posts' }).click();
+    assert.equal(await panel(saved).locator('.confirm-title').textContent(), 'Labeled 2 posts \u2713');
+    await feedButton(saved, P1).getByText('Launches', { exact: true }).waitFor();
+    await feedButton(saved, P2).getByText('Launches', { exact: true }).waitFor();
+    await bar.getByRole('button', { name: 'Select posts to label' }).waitFor();
+    assert.equal(await pick(P1).isVisible(), false, 'checkboxes hide when done');
+    await panel(saved).waitFor({ state: 'detached', timeout: 4000 });
+    const p = await openPopup(context, extId, FEED);
+    const stored = await storedData(p);
+    for (const id of [P1, P2]) {
+      assert.deepEqual(
+        stored.posts[id].labelIds.map(l => stored.labels[l].name),
+        ['Launches'],
+      );
+      assert.ok(stored.posts[id].text.startsWith('Saved post'), 'text captured for each post');
+    }
+    await p.close();
+    // No bar on other pages.
+    const feedPage = await context.newPage();
+    await feedPage.goto(FEED2);
+    await feedButton(feedPage, ID1).waitFor();
+    assert.equal(await feedPage.locator('[data-labels-ui="bulk"]').count(), 0);
+    await feedPage.close();
+    await saved.close();
+  });
+
   // ---------- keyboard shortcut ----------
   // Automation can't press a Chrome command shortcut, so these send the same message the
   // background worker sends when the shortcut is pressed.
