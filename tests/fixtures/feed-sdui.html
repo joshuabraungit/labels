@@ -94,4 +94,14 @@
     </div>
   </section>
 </main>
+<script>
+  // Like LinkedIn: "… more" loads the rest of the post and goes away.
+  document.addEventListener('click', e => {
+    const more = e.target.closest('[data-testid="expandable-text-button"]');
+    if (!more) return;
+    const box = more.closest('[data-testid="expandable-text-box"]');
+    more.remove();
+    setTimeout(() => box.append(' Then he asked one sharp question about our pipeline.'), 100);
+  });
+</script>
 </body></html>

@@ -24,7 +24,7 @@ That's all. Labels does not store or read comments, the post author's name or pr
 - **Toolbar icon:** when you click the Labels icon while viewing a single LinkedIn post, Labels reads that page's link and the post's visible text so you can save it.
 - **Copy page info (optional, for troubleshooting):** if you click this link in the popup, Labels copies an outline of the page's layout to your clipboard. The outline contains tag and class names and text lengths only, with no post text, names or links. It goes only to your clipboard, and you decide whether to share it.
 
-Labels does not run on any website other than www.linkedin.com. It does not click, scroll, post, message or automate anything on LinkedIn.
+Labels does not run on any website other than www.linkedin.com. The only thing it ever clicks on LinkedIn is a post's "…see more" link, and only on the post you're labeling, so it can read the whole post. It does not scroll, post, message, like or otherwise automate anything on LinkedIn.
 
 ## Where your data goes
 

@@ -102,7 +102,7 @@ async function openPopup(context, extId, target, query = '') {
   const qs = new URLSearchParams(query);
   if (target) qs.set('target', target);
   await page.goto(`chrome-extension://${extId}/popup.html?${qs}`);
-  await page.locator('.content').waitFor();
+  await page.locator('body[data-ready]').waitFor();
   return page;
 }
 
@@ -447,6 +447,8 @@ try {
       fullA.some(t => t.startsWith('Design systems')),
       'shows the full text',
     );
+    // The post saved without readable text is flagged as partial; the full one isn't.
+    assert.equal(await p.locator('.main .partial').count(), 1);
     await shot(p, '13-full-page');
     await p.getByRole('searchbox', { name: 'Search saved posts' }).fill('q3');
     assert.equal(await p.locator('.main .section-title').textContent(), 'Search');
@@ -931,10 +933,18 @@ try {
     await shot(sdui, '12-sdui-feed');
 
     await feedButton(sdui, S1).click();
+    // Labels clicks "… more" so the whole post is read.
+    await sdui.waitForFunction(() =>
+      document
+        .querySelector('[data-labels-ui="panel"]')
+        ?.shadowRoot.querySelector('.panel')
+        ?.dataset.excerpt?.endsWith('one sharp question about our pipeline.'),
+    );
     assert.equal(
       await panel(sdui).getAttribute('data-excerpt'),
-      'SDUI post one: here is one of the best cold DMs I have ever received. He told me exactly who he is.',
+      'SDUI post one: here is one of the best cold DMs I have ever received. He told me exactly who he is. Then he asked one sharp question about our pipeline.',
     );
+    assert.equal(await sdui.locator('[data-testid="expandable-text-button"]').count(), 0, 'post was expanded');
     await panel(sdui).locator('label', { hasText: 'Launches' }).locator('input').check();
     await panel(sdui).getByRole('button', { name: 'Save', exact: true }).click();
     await panel(sdui).getByText('Saved \u2713').waitFor();
@@ -947,6 +957,11 @@ try {
     const p = await openPopup(context, extId, FEED);
     const stored = await storedData(p);
     assert.equal(stored.posts[S1].url, `https://www.linkedin.com/feed/update/${S1}/`);
+    assert.equal(
+      stored.posts[S1].text,
+      'SDUI post one: here is one of the best cold DMs I have ever received.\n\nHe told me exactly who he is. Then he asked one sharp question about our pipeline.',
+      'full text, paragraphs kept',
+    );
     await p.close();
     await sdui.close();
   });

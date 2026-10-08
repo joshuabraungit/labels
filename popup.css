@@ -993,8 +993,11 @@ body.page-mode .post-row {
   padding-right: 12px;
 }
 
+/* The full view shows the whole post, no cut-off. */
 body.page-mode .post-open .excerpt {
-  -webkit-line-clamp: 8;
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
   white-space: pre-line;
 }
 
@@ -1011,4 +1014,20 @@ body.page-mode .post-open .excerpt {
   .sidebar {
     position: static;
   }
+}
+
+/* Posts are separated by a clear red line */
+.list li.post-row + li.post-row {
+  border-top: 2px solid #e5484d;
+}
+
+.partial {
+  margin: -4px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+body.page-mode .partial {
+  font-size: 13px;
 }

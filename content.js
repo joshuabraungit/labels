@@ -150,7 +150,7 @@
     .posts { list-style: none; margin: 4px -16px 0; padding: 0; overflow-y: auto;
       max-height: clamp(200px, calc(100vh - 200px), 460px); border-top: 1px solid #ececf0; }
     .posts li { display: flex; align-items: flex-start; }
-    .posts li + li { border-top: 1px solid #ececf0; }
+    .posts li + li { border-top: 2px solid #e5484d; }
     .posts a { flex: 1; min-width: 0; display: block; padding: 11px 16px; color: #1c1b22; text-decoration: none; line-height: 1.5; }
     .posts a:hover { background: #f6f5f9; }
     .posts a:hover .excerpt { color: #5c40ab; }
@@ -465,6 +465,18 @@
 
   // ---------- picker panel ----------
 
+  // Expands the post ("…see more") and returns its text once the rest has loaded.
+  async function readFullText(container) {
+    const before = labelsPostText(container).text;
+    if (!labelsExpandPost(container)) return before;
+    let text = before;
+    for (let i = 0; i < 12 && text.length <= before.length; i++) {
+      await new Promise(r => setTimeout(r, 50));
+      text = labelsPostText(container).text;
+    }
+    return text;
+  }
+
   function openPanel(postId, container, anchor, { viaKeyboard = false, bulk = null } = {}) {
     closePanel();
     const host = h('div', { 'data-labels-ui': 'panel' });
@@ -523,6 +535,18 @@
       status: '',
       saving: false,
     };
+    // Read the whole post in the background; saving waits for it.
+    const p = panel;
+    p.textReady = container
+      ? readFullText(container)
+          .then(full => {
+            if (panel === p && full.length > p.text.length) {
+              p.text = full;
+              renderPanel();
+            }
+          })
+          .catch(() => {})
+      : Promise.resolve();
     renderPanel();
 
     send('getState', { postId })
@@ -1232,10 +1256,11 @@
     p.error = '';
     renderPanel();
     try {
-      const posts = p.bulk.map(id => ({
-        postId: id,
-        text: buttons.get(id) ? labelsPostText(buttons.get(id).container).text : '',
-      }));
+      const posts = [];
+      for (const id of p.bulk) {
+        const container = buttons.get(id)?.container;
+        posts.push({ postId: id, text: container ? await readFullText(container) : '' });
+      }
       const state = await send('labelMany', { posts, labelIds: [...p.selection] });
       if (panel !== p) return;
       applyLabels(p, state);
@@ -1270,6 +1295,7 @@
     p.status = '';
     renderPanel();
     try {
+      await p.textReady;
       const state = await send('savePost', { postId: p.postId, text: p.text, labelIds: [...p.selection] });
       if (panel !== p) return false;
       p.labels = state.labels;
@@ -1356,7 +1382,8 @@
   document.addEventListener(
     'click',
     e => {
-      if (!panel) return;
+      // Ignore clicks that aren't the user's (like Labels expanding a post's "…see more").
+      if (!panel || !e.isTrusted) return;
       const path = e.composedPath();
       if (path.includes(panel.host) || path.includes(panel.anchor)) return;
       closePanel();

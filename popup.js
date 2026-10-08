@@ -31,7 +31,11 @@ async function runCapture(tabId, postId, mode) {
   await chrome.scripting.executeScript({ target: { tabId }, files: ['lib/capture.js'] });
   const [injection] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: (id, how) => capturePostText(id, how),
+    // Expands a collapsed post ("…see more") first, so the whole text gets saved.
+    func: async (id, how) => {
+      if (how === 'capture' && labelsExpandPost(labelsContainerFor(id))) await new Promise(r => setTimeout(r, 600));
+      return capturePostText(id, how);
+    },
     args: [postId, mode],
   });
   return injection?.result;
@@ -722,6 +726,13 @@ function renderPostRow(post, { showLabels = false } = {}) {
         ),
       ),
       post.note && h('p', { class: 'note' }, post.note),
+      isPage &&
+        isPartial(post) &&
+        h(
+          'p',
+          { class: 'partial' },
+          'Only part of this post was saved. Click its Label button on LinkedIn to get the rest.',
+        ),
       labels.length > 0 &&
         h(
           'div',
@@ -750,6 +761,11 @@ function renderPostRow(post, { showLabels = false } = {}) {
       '⋯',
     ),
   );
+}
+
+// Saved before Labels kept full text, or cut off by LinkedIn's "…see more".
+function isPartial(post) {
+  return !post.text || /(…|\.\.\.)$/.test(post.text.trim());
 }
 
 function showToast(text) {
@@ -1318,6 +1334,7 @@ async function init() {
   } else if (isTab) state.view = location.hash === '#help' ? 'help' : 'labels';
   else state.view = 'labels';
   render();
+  document.body.dataset.ready = 'true';
 }
 
 init();
