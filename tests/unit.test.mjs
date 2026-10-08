@@ -1,7 +1,7 @@
 // Run with: node --test tests/unit.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyUrl, makeExcerpt } from '../lib/post.js';
+import { classifyUrl, cleanPostText, makeExcerpt, TEXT_LIMIT } from '../lib/post.js';
 import {
   createStore,
   exportBackup,
@@ -10,6 +10,8 @@ import {
   postsOnlyIn,
   PINNED_ID,
   pinnedCount,
+  postsAsMarkdown,
+  searchPosts,
   STORAGE_KEY,
   validateBackup,
 } from '../lib/store.js';
@@ -212,6 +214,88 @@ test('pinned posts sort first and survive backup', async () => {
   ({ data } = await store.setPinned(A, false));
   assert.equal(pinnedCount(data), 0);
   await assert.rejects(store.setPinned('urn:li:activity:9', true), /no longer exists/);
+});
+
+test('full text, notes, colors and search', async () => {
+  const A = 'urn:li:activity:7212345678901234567';
+  const B = 'urn:li:activity:7200000000000000001';
+  const store = createStore(memoryArea());
+  const { result: cold } = await store.createLabel('Cold email');
+  const { result: hire } = await store.createLabel('Hiring');
+  const long = `Opening line here.\n\n\n\nSecond   paragraph about subject lines. ${'x'.repeat(5000)}`;
+  await store.savePost({ id: A, url: POST_A, excerpt: makeExcerpt(long), text: long, labelIds: [cold.id] });
+  await store.savePost({
+    id: B,
+    url: POST_B,
+    excerpt: 'Interview tips',
+    text: 'Interview tips for AEs',
+    labelIds: [hire.id],
+  });
+  let data = await store.load();
+  assert.ok(data.posts[A].text.startsWith('Opening line here.\n\nSecond paragraph'));
+  assert.equal(data.posts[A].text.length, TEXT_LIMIT);
+  // A shorter capture later doesn't replace the longer text.
+  ({ data } = await store.savePost({ id: A, url: POST_A, excerpt: '', text: 'Opening', labelIds: [cold.id] }));
+  assert.equal(data.posts[A].text.length, TEXT_LIMIT);
+
+  ({ data } = await store.setNote(B, '  use for   Q3 hiring push '));
+  assert.equal(data.posts[B].note, 'use for Q3 hiring push');
+  ({ data } = await store.setLabelColor(cold.id, 'blue'));
+  assert.equal(data.labels[cold.id].color, 'blue');
+  ({ data } = await store.setLabelColor(cold.id, 'neon'));
+  assert.equal(data.labels[cold.id].color, undefined, 'unknown colors are cleared');
+
+  const ids = q => searchPosts(data, q).map(p => p.id);
+  assert.deepEqual(ids('subject lines'), [A], 'matches full text beyond the preview');
+  assert.deepEqual(ids('q3'), [B], 'matches notes');
+  assert.deepEqual(ids('hiring'), [B], 'matches label names');
+  assert.deepEqual(ids('interview q3'), [B], 'all words must match');
+  assert.deepEqual(ids('nothing-like-this'), []);
+  assert.deepEqual(ids('  '), []);
+
+  assert.equal(postsAsMarkdown(data, hire.id), `- [Interview tips](${POST_B}) - use for Q3 hiring push`);
+
+  ({ data } = await store.setNote(B, ''));
+  assert.equal(data.posts[B].note, undefined);
+  assert.equal(cleanPostText(' a \r\n b '), 'a\nb');
+});
+
+test('labelMany adds labels to several posts and saves new ones', async () => {
+  const A = 'urn:li:activity:7212345678901234567';
+  const B = 'urn:li:activity:7200000000000000001';
+  const store = createStore(memoryArea());
+  const { result: x } = await store.createLabel('X');
+  const { result: y } = await store.createLabel('Y');
+  await store.savePost({ id: A, url: POST_A, excerpt: 'a', labelIds: [x.id] });
+  const { data, result } = await store.labelMany(
+    [
+      { id: A, url: POST_A, excerpt: 'a', text: 'a' },
+      { id: B, url: POST_B, excerpt: 'b', text: 'b full' },
+      { id: 'bad', url: POST_B },
+    ],
+    [y.id],
+  );
+  assert.deepEqual(result, { added: 1, updated: 1 });
+  assert.deepEqual(data.posts[A].labelIds.sort(), [x.id, y.id].sort());
+  assert.deepEqual(data.posts[B].labelIds, [y.id]);
+  assert.equal(data.posts[B].text, 'b full');
+  await assert.rejects(store.labelMany([{ id: A, url: POST_A }], []), /Pick or create a label/);
+});
+
+test('backups keep text, notes and colors', async () => {
+  const A = 'urn:li:activity:7212345678901234567';
+  const a = createStore(memoryArea());
+  const { result: l } = await a.createLabel('Design');
+  await a.setLabelColor(l.id, 'green');
+  await a.savePost({ id: A, url: POST_A, excerpt: 'A', text: 'A full text', labelIds: [l.id] });
+  const { data: aData } = await a.setNote(A, 'remember this');
+  const backup = JSON.parse(JSON.stringify(exportBackup(aData)));
+  const b = createStore(memoryArea());
+  const { data } = await b.importBackup(backup);
+  const post = data.posts[A];
+  assert.equal(post.text, 'A full text');
+  assert.equal(post.note, 'remember this');
+  assert.equal(data.labels[post.labelIds[0]].color, 'green');
 });
 
 test('backup round trip merges without duplicates', async () => {

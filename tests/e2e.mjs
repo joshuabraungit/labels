@@ -601,7 +601,8 @@ try {
     await shot(feed, '11-feed-picker');
     await panel(feed).getByRole('button', { name: 'Save', exact: true }).click();
     await panel(feed).getByText('Saved \u2713').waitFor();
-    await feedButton(feed, ID1).getByText('Labeled').waitFor();
+    await feedButton(feed, ID1).getByText('Feed picks', { exact: true }).waitFor();
+    assert.equal(await feedButton(feed, ID1).getAttribute('title'), 'Labeled: Feed picks', 'button names its labels');
     const p = await openPopup(context, extId, FEED);
     const stored = await storedData(p);
     const post = stored.posts[ID1];
@@ -614,6 +615,7 @@ try {
       post.labelIds.map(id => stored.labels[id].name),
       ['Feed picks'],
     );
+    assert.ok(post.text.startsWith('Feed post one: the best sales emails'), 'full text is stored');
     await p.close();
   });
 
@@ -674,7 +676,7 @@ try {
     await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('input').check();
     await panel(feed).getByRole('button', { name: 'Save', exact: true }).click();
     await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
-    await feedButton(feed, ID1).getByText('Labeled').waitFor();
+    await feedButton(feed, ID1).getByText('Feed picks', { exact: true }).waitFor();
     await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count').click();
     assert.equal(await rows.count(), 1);
     // Esc (or Back) returns to the picker as it was, without ticking anything.
@@ -719,7 +721,7 @@ try {
     await query.press('Enter');
     await panel(feed).getByRole('button', { name: 'Save', exact: true }).click();
     await panel(feed).getByRole('button', { name: 'Saved \u2713' }).waitFor();
-    await feedButton(feed, ID3).getByText('Labeled').waitFor();
+    await feedButton(feed, ID3).getByText('Temp', { exact: true }).waitFor();
     const row = panel(feed).locator('li', { hasText: 'Temp' });
     await row.hover();
     await row.getByRole('button', { name: 'Delete label Temp' }).click();
@@ -958,6 +960,7 @@ try {
     ]);
     await p.close();
 
+    await feedButton(sdui, S3).getByText('Feed picks +1').waitFor();
     // A post with another label is only taken out of this one, not deleted.
     await feedButton(sdui, S3).click();
     await panel(sdui).locator('li', { hasText: 'Keyboard only' }).locator('.count').click();
@@ -965,7 +968,7 @@ try {
     await panel(sdui).getByText('No saved posts with this label.').waitFor();
     await panel(sdui).getByRole('button', { name: 'Back' }).click();
     assert.deepEqual(await checked(), ['Feed picks'], 'still saved with its other label');
-    await feedButton(sdui, S3).getByText('Labeled').waitFor();
+    await feedButton(sdui, S3).getByText('Feed picks', { exact: true }).waitFor();
     await sdui.keyboard.press('Escape');
     await panel(sdui).waitFor({ state: 'detached' });
 

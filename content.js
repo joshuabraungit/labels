@@ -156,6 +156,7 @@
   const FALLBACK_PREVIEW = 'Open saved post';
   const buttons = new Map(); // post id -> { host, button, container }
   let savedIds = new Set();
+  let savedNames = {}; // post ID -> its label names, shown on the button
   let panel = null; // open picker state
 
   // ---------- helpers ----------
@@ -290,13 +291,31 @@
     paintButton(id);
   }
 
+  // What a saved post's button says: its label names when they're short, else the first
+  // one and how many more ("Cold email +2").
+  function buttonText(names) {
+    if (!names.length) return 'Labeled';
+    const short = n => (n.length > 18 ? `${n.slice(0, 17)}…` : n);
+    if (names.length === 1) return short(names[0]);
+    const both = names.join(', ');
+    if (names.length === 2 && both.length <= 24) return both;
+    return `${short(names[0])} +${names.length - 1}`;
+  }
+
   function paintButton(id) {
     const entry = buttons.get(id);
     if (!entry) return;
     const saved = savedIds.has(id);
+    const names = savedNames[id] ?? [];
     entry.button.className = `label-btn${saved ? ' saved' : ''}`;
-    entry.button.innerHTML = `${TAG_ICON}<span>${saved ? 'Labeled' : 'Label'}</span>`;
-    entry.button.setAttribute('aria-label', saved ? 'Edit labels for this post' : 'Label this post');
+    entry.button.innerHTML = TAG_ICON;
+    entry.button.append(h('span', null, saved ? buttonText(names) : 'Label'));
+    entry.button.setAttribute(
+      'aria-label',
+      saved ? `Edit labels for this post (${names.join(', ') || 'saved'})` : 'Label this post',
+    );
+    if (saved && names.length) entry.button.title = `Labeled: ${names.join(', ')}`;
+    else entry.button.removeAttribute('title');
   }
 
   function scan() {
@@ -927,6 +946,7 @@
     p.pinned = state.pinned;
     p.post = state.post;
     savedIds = new Set(state.savedIds);
+    savedNames = state.savedLabels ?? {};
     buttons.forEach((_, id) => paintButton(id));
   }
 
@@ -1026,6 +1046,7 @@
       p.labels = state.labels;
       p.pinned = state.pinned;
       savedIds = new Set(state.savedIds);
+      savedNames = state.savedLabels ?? {};
       buttons.forEach((_, id) => paintButton(id));
       if (post.id === p.postId) {
         // Keep the picker in step with what's saved for the post being labeled.
@@ -1056,6 +1077,7 @@
       p.post = state.post;
       p.status = state.removed ? 'Removed from Labels' : 'Saved ✓';
       savedIds = new Set(state.savedIds);
+      savedNames = state.savedLabels ?? {};
       buttons.forEach((_, id) => paintButton(id));
     } catch (err) {
       // Keep the selection so the user can retry.
@@ -1155,6 +1177,7 @@
     try {
       const state = await send('getState', { postId: panel?.postId });
       savedIds = new Set(state.savedIds);
+      savedNames = state.savedLabels ?? {};
       buttons.forEach((_, id) => paintButton(id));
       if (panel && !panel.loading && state) {
         panel.labels = state.labels;

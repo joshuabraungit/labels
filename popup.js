@@ -372,6 +372,7 @@ async function onSave() {
       id: page.id,
       url: page.url,
       excerpt: page.excerpt,
+      text: page.text,
       labelIds: [...state.selection],
     });
     state.data = data;
@@ -1028,7 +1029,7 @@ async function detectPage() {
     // Saving still works with the "Open saved post" preview.
     console.warn('Labels: could not read the post text', err);
   }
-  return { ...page, tabId: tab.id, excerpt: makeExcerpt(text) };
+  return { ...page, tabId: tab.id, excerpt: makeExcerpt(text), text };
 }
 
 async function init() {
@@ -1047,10 +1048,11 @@ async function init() {
   state.wasSaved = Boolean(existing);
   if (existing) {
     state.selection = new Set(existing.labelIds);
-    // Posts saved before a preview could be read get one the next time they're opened.
-    if (!existing.excerpt && page.excerpt) {
+    // Posts saved before a preview (or the full text) could be read get it the next time
+    // they're opened.
+    if ((!existing.excerpt && page.excerpt) || (page.text?.length ?? 0) > (existing.text?.length ?? 0)) {
       try {
-        state.data = (await store.fillExcerpt(page.id, page.excerpt)).data;
+        state.data = (await store.fillExcerpt(page.id, page.excerpt, page.text)).data;
       } catch (err) {
         console.warn('Labels: could not add the preview', err);
       }

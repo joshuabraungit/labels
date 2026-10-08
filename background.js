@@ -15,6 +15,16 @@ function view(data, postId) {
     })),
     post: postId ? (data.posts[postId] ?? null) : null,
     savedIds: Object.keys(data.posts),
+    // Label names per saved post (A to Z), shown on the feed buttons.
+    savedLabels: Object.fromEntries(
+      Object.values(data.posts).map(p => [
+        p.id,
+        p.labelIds
+          .map(id => data.labels[id]?.name)
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+      ]),
+    ),
     pinned: pinnedCount(data),
   };
 }
@@ -80,6 +90,7 @@ const handlers = {
       id: page.id,
       url: page.url,
       excerpt: makeExcerpt(text),
+      text,
       labelIds,
     });
     return { ...view(data, postId), created: result.created, removed: Boolean(result.removed) };
