@@ -703,3 +703,42 @@ kbd {
 .dialog.warn .btn.danger {
   background: #c4260f;
 }
+
+/* Pinned */
+.pin-mark {
+  display: inline-flex;
+  color: var(--accent);
+}
+
+.pin-mark svg {
+  width: 15px;
+  height: 15px;
+}
+
+.del-spacer {
+  flex: none;
+  width: 28px;
+  margin-right: 10px;
+}
+
+.post-row .icon-btn.pin {
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+  opacity: 0;
+}
+
+.post-row:hover .icon-btn.pin,
+.post-row .icon-btn.pin:focus-visible,
+.post-row .icon-btn.pin.on {
+  opacity: 1;
+}
+
+.post-row .icon-btn.pin.on {
+  color: var(--accent);
+}
+
+.post-row .icon-btn.pin svg {
+  width: 16px;
+  height: 16px;
+}

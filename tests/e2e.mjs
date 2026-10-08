@@ -348,6 +348,31 @@ try {
     await p.close();
   });
 
+  await check('pin posts in the popup: pinned go first, and show under Pinned', async () => {
+    const p = await openPopup(context, extId, FEED);
+    await p.locator('.label-row', { hasText: 'Launches' }).click();
+    const opened = () => p.locator('.post-open').evaluateAll(els => els.map(e => e.title));
+    const [first, second] = await opened();
+    const row = p.locator('.post-row', { has: p.locator(`[title="${second}"]`) });
+    await row.hover();
+    await row.getByRole('button', { name: 'Pin post' }).click();
+    assert.deepEqual(await opened(), [second, first], 'pinned post moves to the top');
+    assert.equal(await p.getByRole('button', { name: 'Unpin post' }).getAttribute('aria-pressed'), 'true');
+    await p.getByRole('button', { name: 'Back' }).click();
+    assert.deepEqual(await labelsRows(p), ['Pinned:1', 'Launches:2']);
+    await p.locator('.label-row', { hasText: 'Pinned' }).click();
+    assert.equal(await p.locator('.header h2').textContent(), 'Pinned');
+    assert.equal(await p.getByRole('button', { name: 'Options', exact: true }).count(), 0, 'no label options');
+    assert.deepEqual(await opened(), [second]);
+    // Unpin from the post's menu.
+    await p.getByRole('button', { name: 'Saved post options' }).click();
+    await p.getByRole('menuitem', { name: 'Unpin' }).click();
+    await p.getByText('No pinned posts.').waitFor();
+    await p.getByRole('button', { name: 'Back' }).click();
+    assert.deepEqual(await labelsRows(p), ['Launches:2'], 'Pinned row hides when empty');
+    await p.close();
+  });
+
   await check('delete a label from the popup list, with the same warning', async () => {
     const tab = await context.newPage();
     await tab.goto(POST_A);
@@ -663,6 +688,26 @@ try {
     await pill.click();
     await panel(feed).getByRole('button', { name: 'Back' }).click();
     await panel(feed).getByLabel('Find or create a label').waitFor();
+    await feed.keyboard.press('Escape');
+    await panel(feed).waitFor({ state: 'detached' });
+  });
+
+  await check("feed: pin and unpin from a label's posts in the picker", async () => {
+    await feedButton(feed, ID1).click();
+    await panel(feed).locator('li', { hasText: 'Feed picks' }).locator('.count').click();
+    await panel(feed).getByRole('button', { name: 'Pin post' }).click();
+    assert.equal(await panel(feed).getByRole('button', { name: 'Unpin post' }).getAttribute('aria-pressed'), 'true');
+    await panel(feed).getByRole('button', { name: 'Back' }).click();
+    const pinnedRow = panel(feed).locator('li.pinned-row');
+    assert.equal(await pinnedRow.locator('.count').textContent(), '1 \u203A');
+    await pinnedRow.locator('.count').click();
+    assert.equal(await panel(feed).locator('.label-view h2').textContent(), 'Pinned');
+    assert.equal(await panel(feed).locator('.posts a').count(), 1);
+    assert.equal(await panel(feed).locator('.posts .remove').count(), 0, 'nothing to remove from in Pinned');
+    await panel(feed).getByRole('button', { name: 'Unpin post' }).click();
+    await panel(feed).getByText('No pinned posts.').waitFor();
+    await panel(feed).getByRole('button', { name: 'Back' }).click();
+    assert.equal(await pinnedRow.count(), 0, 'Pinned row hides when empty');
     await feed.keyboard.press('Escape');
     await panel(feed).waitFor({ state: 'detached' });
   });

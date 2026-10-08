@@ -1,7 +1,7 @@
 // Handles storage for the feed buttons (content.js), so labels and saved posts are read
 // and written by the same code the toolbar popup uses.
 import { classifyUrl, makeExcerpt } from './lib/post.js';
-import { createStore, LabelsError, labelsWithCounts, postsForLabel, postsOnlyIn } from './lib/store.js';
+import { createStore, LabelsError, labelsWithCounts, pinnedCount, postsForLabel, postsOnlyIn } from './lib/store.js';
 
 const store = createStore(chrome.storage.local);
 
@@ -15,11 +15,18 @@ function view(data, postId) {
     })),
     post: postId ? (data.posts[postId] ?? null) : null,
     savedIds: Object.keys(data.posts),
+    pinned: pinnedCount(data),
   };
 }
 
 function labelPostRows(data, labelId) {
-  return postsForLabel(data, labelId).map(p => ({ id: p.id, url: p.url, excerpt: p.excerpt, savedAt: p.savedAt }));
+  return postsForLabel(data, labelId).map(p => ({
+    id: p.id,
+    url: p.url,
+    excerpt: p.excerpt,
+    savedAt: p.savedAt,
+    pinnedAt: p.pinnedAt || 0,
+  }));
 }
 
 const handlers = {
@@ -46,6 +53,12 @@ const handlers = {
   async deleteLabel({ labelId, postId }) {
     const { data, result } = await store.deleteLabel(labelId);
     return { ...view(data, postId), removed: result.removed };
+  },
+
+  // Pins or unpins a post from the picker's list of a label's posts.
+  async setPinned({ postId, pinned, labelId, currentPostId }) {
+    const { data } = await store.setPinned(postId, pinned);
+    return { ...view(data, currentPostId), posts: labelPostRows(data, labelId) };
   },
 
   async getState({ postId }) {

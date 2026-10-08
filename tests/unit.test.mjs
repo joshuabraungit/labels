@@ -8,6 +8,8 @@ import {
   labelsWithCounts,
   postsForLabel,
   postsOnlyIn,
+  PINNED_ID,
+  pinnedCount,
   STORAGE_KEY,
   validateBackup,
 } from '../lib/store.js';
@@ -176,6 +178,40 @@ test('posts sort newest saved first', async () => {
     postsForLabel(data, l.id).map(p => p.excerpt),
     ['new', 'old'],
   );
+});
+
+test('pinned posts sort first and survive backup', async () => {
+  const A = 'urn:li:activity:7212345678901234567';
+  const B = 'urn:li:activity:7200000000000000001';
+  const store = createStore(memoryArea());
+  const { result: l } = await store.createLabel('Ideas');
+  await store.savePost({ id: A, url: POST_A, excerpt: 'old', labelIds: [l.id] });
+  await new Promise(r => setTimeout(r, 5));
+  await store.savePost({ id: B, url: POST_B, excerpt: 'new', labelIds: [l.id] });
+  let { data } = await store.setPinned(A, true);
+  assert.deepEqual(
+    postsForLabel(data, l.id).map(p => p.excerpt),
+    ['old', 'new'],
+    'pinned on top',
+  );
+  assert.deepEqual(
+    postsForLabel(data, PINNED_ID).map(p => p.excerpt),
+    ['old'],
+  );
+  assert.equal(pinnedCount(data), 1);
+  // Saving again keeps the pin.
+  ({ data } = await store.savePost({ id: A, url: POST_A, excerpt: '', labelIds: [l.id] }));
+  assert.ok(data.posts[A].pinnedAt);
+
+  const backup = JSON.parse(JSON.stringify(exportBackup(data)));
+  const other = createStore(memoryArea());
+  const { data: imported } = await other.importBackup(backup);
+  assert.ok(imported.posts[A].pinnedAt);
+  assert.equal(imported.posts[B].pinnedAt, undefined);
+
+  ({ data } = await store.setPinned(A, false));
+  assert.equal(pinnedCount(data), 0);
+  await assert.rejects(store.setPinned('urn:li:activity:9', true), /no longer exists/);
 });
 
 test('backup round trip merges without duplicates', async () => {

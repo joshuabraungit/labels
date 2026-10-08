@@ -8,6 +8,8 @@ import {
   LabelsError,
   postsForLabel,
   sortedLabels,
+  pinnedCount,
+  PINNED_ID,
   postsOnlyIn,
   STORAGE_KEY,
 } from './lib/store.js';
@@ -28,23 +30,27 @@ async function runCapture(tabId, postId, mode) {
   return injection?.result;
 }
 const FALLBACK_PREVIEW = 'Open saved post';
-function trashIcon() {
+function svgIcon(paths, fillFirst = false) {
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
-  for (const d of ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 13h10l1-13', 'M9 7V4h6v3']) {
+  paths.forEach((d, i) => {
     const path = document.createElementNS(ns, 'path');
     path.setAttribute('d', d);
-    path.setAttribute('fill', 'none');
+    path.setAttribute('fill', fillFirst && i === 0 ? 'currentColor' : 'none');
     path.setAttribute('stroke', 'currentColor');
     path.setAttribute('stroke-width', '2');
     path.setAttribute('stroke-linecap', 'round');
     path.setAttribute('stroke-linejoin', 'round');
     svg.append(path);
-  }
+  });
   return svg;
 }
+
+const trashIcon = () => svgIcon(['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 13h10l1-13', 'M9 7V4h6v3']);
+const PIN_PATH = 'M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6z';
+const pinIcon = (filled = false) => svgIcon([PIN_PATH, 'M12 15v6'], filled);
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -422,6 +428,29 @@ function renderLabels({ compact = false } = {}) {
       h(
         'ul',
         { class: 'list' },
+        // Pinned shows first, like a label, once anything is pinned.
+        pinnedCount(state.data) > 0 &&
+          h(
+            'li',
+            { class: 'label-item' },
+            h(
+              'button',
+              {
+                class: 'label-row pinned-row',
+                'data-focus': `label-${PINNED_ID}`,
+                onClick: () => go('label', { labelId: PINNED_ID }),
+              },
+              h('span', { class: 'pin-mark' }, pinIcon(true)),
+              h('span', { class: 'name' }, 'Pinned'),
+              h(
+                'span',
+                { class: 'count', 'aria-label': `${pinnedCount(state.data)} pinned posts` },
+                String(pinnedCount(state.data)),
+              ),
+              h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
+            ),
+            h('span', { class: 'del-spacer', 'aria-hidden': 'true' }),
+          ),
         rows.map(row =>
           h(
             'li',
@@ -504,8 +533,39 @@ function renderUndo() {
   );
 }
 
+async function togglePin(postId) {
+  const post = state.data.posts[postId];
+  state.menu = null;
+  if (!post) return render();
+  try {
+    const { data } = await store.setPinned(postId, !post.pinnedAt);
+    state.data = data;
+    state.focus = `pin-${postId}`;
+  } catch (err) {
+    alert(errorMessage(err));
+  }
+  render();
+}
+
+function renderPinButton(post) {
+  const pinned = Boolean(post.pinnedAt);
+  return h(
+    'button',
+    {
+      class: `icon-btn pin${pinned ? ' on' : ''}`,
+      'aria-label': pinned ? 'Unpin post' : 'Pin post',
+      'aria-pressed': String(pinned),
+      title: pinned ? 'Unpin' : 'Pin',
+      'data-focus': `pin-${post.id}`,
+      onClick: () => togglePin(post.id),
+    },
+    pinIcon(pinned),
+  );
+}
+
 function renderLabel() {
-  const name = labelName(state.data, state.labelId);
+  const isPinned = state.labelId === PINNED_ID;
+  const name = isPinned ? 'Pinned' : labelName(state.data, state.labelId);
   if (!name) {
     state.view = 'labels';
     return renderHome();
@@ -520,19 +580,20 @@ function renderLabel() {
       { class: 'header' },
       h('button', { class: 'icon-btn back', 'aria-label': 'Back', title: 'Back', onClick: () => go('labels') }, '‹'),
       h('h2', { title: name }, name),
-      h(
-        'button',
-        {
-          class: 'icon-btn',
-          'aria-label': 'Options',
-          title: 'Options',
-          'aria-haspopup': 'menu',
-          'aria-expanded': String(state.menu?.kind === 'label'),
-          'data-focus': 'label-options',
-          onClick: e => toggleMenu(e, { kind: 'label' }),
-        },
-        '•••',
-      ),
+      !isPinned &&
+        h(
+          'button',
+          {
+            class: 'icon-btn',
+            'aria-label': 'Options',
+            title: 'Options',
+            'aria-haspopup': 'menu',
+            'aria-expanded': String(state.menu?.kind === 'label'),
+            'data-focus': 'label-options',
+            onClick: e => toggleMenu(e, { kind: 'label' }),
+          },
+          '•••',
+        ),
     ),
     posts.length
       ? h(
@@ -554,6 +615,7 @@ function renderLabel() {
                     post.excerpt || `${FALLBACK_PREVIEW} \u00B7 saved ${savedDate(post.savedAt)}`,
                   ),
                 ),
+                renderPinButton(post),
                 h(
                   'button',
                   {
@@ -570,7 +632,7 @@ function renderLabel() {
             ),
           ),
         )
-      : h('p', { class: 'empty' }, 'No saved posts with this label yet.'),
+      : h('p', { class: 'empty' }, isPinned ? 'No pinned posts.' : 'No saved posts with this label yet.'),
     renderUndo(),
   );
 }
@@ -735,6 +797,7 @@ function renderMenu() {
   return h(
     'div',
     { class: 'menu', role: 'menu' },
+    item(state.data.posts[m.postId]?.pinnedAt ? 'Unpin' : 'Pin', () => togglePin(m.postId)),
     item('Edit labels', () => {
       const post = state.data.posts[m.postId];
       go('edit', { editPostId: m.postId, editSelection: new Set(post?.labelIds ?? []), editError: '' });
