@@ -119,7 +119,8 @@
   let savedNames = {}; // post ID -> its label names, shown on the button
   // LinkedIn's Saved posts page: the bar that brings every loaded post into Labels.
   let importHost = null;
-  let importing = null; // { done, total } while reading posts
+  // While importing: { phase: 'finding' | 'reading', found, done, total, mode, stop }
+  let importing = null;
   let importNote = ''; // "Added 12 posts to To sort." after an import
   let toSortCount = 0; // posts waiting under "To sort"
   const countToSort = labels => labels?.find(l => l.name.toLocaleLowerCase() === 'to sort')?.count ?? 0;
@@ -249,33 +250,84 @@
 
   const isSavedPage = () => /^\/my-items\/saved-posts/.test(location.pathname);
 
-  // Adds every post loaded on the page that isn't in Labels yet, under "To sort".
-  async function importAll() {
-    const ids = [...buttons.keys()].filter(id => !savedIds.has(id));
-    if (!ids.length || importing) return;
-    importing = { done: 0, total: ids.length };
+  const pause = ms => new Promise(r => setTimeout(r, ms));
+
+  // LinkedIn's own "Show more results" button at the end of the list, if it has one.
+  function showMoreButton() {
+    return [...document.querySelectorAll('button')].find(
+      b => !b.closest('[data-labels-ui]') && /^show more results$/i.test(labelsClean(b.textContent)) && !b.disabled,
+    );
+  }
+
+  /**
+   * Import: scrolls LinkedIn's Saved posts page to load posts (the list is newest first),
+   * then reads each new one and adds it under "To sort".
+   *   'all' keeps going until LinkedIn has nothing more to load.
+   *   'new' stops at the first post that's already in Labels: usually right away.
+   * Scrolling is paced like a person would, and Stop works at any point.
+   */
+  async function runImport(mode) {
+    if (importing) return;
+    const run = { phase: 'finding', found: 0, done: 0, total: 0, mode, stop: false };
+    importing = run;
     importNote = '';
     renderImportBar();
-    const posts = [];
-    for (const id of ids) {
-      const container = buttons.get(id)?.container;
-      posts.push({
-        postId: id,
-        text: container ? await readFullText(container) : '',
-        meta: container ? labelsPostMeta(container) : null,
-      });
-      importing.done++;
+
+    // 1. Load posts by scrolling to the end of the list (and pressing "Show more results").
+    let quiet = 0;
+    while (!run.stop) {
+      scan();
+      run.found = [...buttons.keys()].filter(id => !savedIds.has(id)).length;
       renderImportBar();
+      if (mode === 'new' && [...buttons.keys()].some(id => savedIds.has(id))) break;
+      const before = buttons.size;
+      const last = [...buttons.values()].at(-1)?.container;
+      last?.scrollIntoView({ block: 'end' });
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      showMoreButton()?.click();
+      for (let t = 0; t < 30 && !run.stop; t++) {
+        await pause(100);
+        scan();
+        if (buttons.size > before) break;
+      }
+      quiet = buttons.size > before ? 0 : quiet + 1;
+      if (quiet >= 3) break; // nothing more is loading: the end of the list
+      await pause(400 + Math.random() * 400);
     }
-    try {
-      const state = await send('addToSort', { posts });
-      toSortCount = countToSort(state.labels);
-      savedIds = new Set(state.savedIds);
-      savedNames = state.savedLabels ?? {};
-      buttons.forEach((_, id) => paintButton(id));
-      importNote = `Added ${state.added} post${state.added === 1 ? '' : 's'} to To sort.`;
-    } catch (err) {
-      importNote = err.message;
+
+    // 2. Read the new posts (text, author, image) and add them in batches.
+    const ids = [...buttons.keys()].filter(id => !savedIds.has(id));
+    run.phase = 'reading';
+    run.total = ids.length;
+    renderImportBar();
+    let added = 0;
+    for (let start = 0; start < ids.length && !run.stop; start += 25) {
+      const posts = [];
+      for (const id of ids.slice(start, start + 25)) {
+        if (run.stop) break;
+        const container = buttons.get(id)?.container;
+        posts.push({
+          postId: id,
+          text: container ? await readFullText(container) : '',
+          meta: container ? labelsPostMeta(container) : null,
+        });
+        run.done++;
+        renderImportBar();
+      }
+      try {
+        const state = await send('addToSort', { posts });
+        added += state.added;
+        toSortCount = countToSort(state.labels);
+        savedIds = new Set(state.savedIds);
+        savedNames = state.savedLabels ?? {};
+        buttons.forEach((_, id) => paintButton(id));
+      } catch (err) {
+        importNote = err.message;
+        break;
+      }
+    }
+    if (!importNote) {
+      importNote = added ? `Imported ${added} post${added === 1 ? '' : 's'} to To sort.` : 'Nothing new to import.';
     }
     importing = null;
     renderImportBar();
@@ -292,35 +344,57 @@
       importHost.attachShadow({ mode: 'open' });
     }
     if (!importHost.isConnected) document.body.append(importHost);
-    const unsaved = [...buttons.keys()].filter(id => !savedIds.has(id)).length;
     const posts = n => `${n} post${n === 1 ? '' : 's'}`;
     const openLibrary = (view = '') => send('openLibrary', { view }).catch(err => console.warn('Labels:', err));
+    const known = [...buttons.keys()].some(id => savedIds.has(id));
     let parts;
     if (importing) {
+      const run = importing;
       parts = [
-        h('span', { class: 'note', role: 'status' }, `Reading ${importing.done} of ${posts(importing.total)}\u2026`),
-      ];
-    } else if (unsaved) {
-      parts = [
-        importNote && h('span', { class: 'note', role: 'status' }, importNote),
-        h('button', { class: 'primary', type: 'button', onClick: importAll }, `Add ${posts(unsaved)} to Labels`),
-        !importNote && h('span', { class: 'note' }, 'Scroll down first to load more.'),
+        h(
+          'span',
+          { class: 'note', role: 'status' },
+          run.phase === 'finding'
+            ? `Finding your saved posts… ${run.found} new so far`
+            : `Reading ${run.done} of ${posts(run.total)}…`,
+        ),
+        h(
+          'button',
+          {
+            class: 'ghost',
+            type: 'button',
+            onClick: () => {
+              run.stop = true;
+              renderImportBar();
+            },
+          },
+          run.stop ? 'Stopping…' : 'Stop',
+        ),
       ];
     } else {
       parts = [
-        h('span', { class: 'note', role: 'status' }, importNote || 'Every post on this page is in Labels.'),
+        importNote && h('span', { class: 'note', role: 'status' }, importNote),
+        // First time: import everything. After that, just what's new since last time.
+        known
+          ? h('button', { class: 'primary', type: 'button', onClick: () => runImport('new') }, 'Import new')
+          : h(
+              'button',
+              { class: 'primary', type: 'button', onClick: () => runImport('all') },
+              'Import all saved posts',
+            ),
+        known && h('button', { class: 'ghost', type: 'button', onClick: () => runImport('all') }, 'Import all'),
         toSortCount
           ? h(
               'button',
-              { class: 'primary', type: 'button', onClick: () => openLibrary('sort') },
+              { class: 'ghost', type: 'button', onClick: () => openLibrary('sort') },
               `Sort ${posts(toSortCount)}`,
             )
-          : h('button', { class: 'ghost', type: 'button', onClick: () => openLibrary() }, 'Open Library'),
+          : known && h('button', { class: 'ghost', type: 'button', onClick: () => openLibrary() }, 'Open Library'),
       ];
     }
     const bar = h(
       'div',
-      { class: 'bar', role: 'region', 'aria-label': 'Add saved posts to Labels' },
+      { class: 'bar', role: 'region', 'aria-label': 'Import saved posts into Labels' },
       h('span', { class: 'icon' }),
       parts,
     );

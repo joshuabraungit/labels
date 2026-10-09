@@ -39,6 +39,30 @@
         </div>
       </div></div>
     </li>
-  </ul></div>
+  </ul>
+  <button type="button" class="scaffold-finite-scroll__load-button" id="more">Show more results</button>
+  </div>
 </main>
+<script>
+  // Like LinkedIn: "Show more results" loads the next saves, until there are no more.
+  const names = ['Lee Example', 'Mo Example', 'Nia Example', 'Omar Example'];
+  let next = 3;
+  document.getElementById('more').addEventListener('click', e => {
+    setTimeout(() => {
+      const list = document.querySelector('ul');
+      for (let k = 0; k < 2 && next <= 6; k++, next++) {
+        const li = list.lastElementChild.cloneNode(true);
+        li.querySelectorAll('[data-labels-ui]').forEach(n => n.remove());
+        const urn = 'urn:li:activity:734000000000000000' + next;
+        li.querySelector('[data-chameleon-result-urn]').setAttribute('data-chameleon-result-urn', urn);
+        li.querySelectorAll('a[href^="/in/"]').forEach(a => a.setAttribute('href', '/in/person' + next + '/'));
+        li.querySelector('[dir="ltr"] span').textContent = names[next - 3];
+        li.querySelector('.entity-result__content-summary').textContent = 'Saved post ' + next + ' is older.';
+        li.querySelector('[aria-label^="Click to take more actions"]').setAttribute('aria-label', 'Click to take more actions on ' + names[next - 3] + ' post');
+        list.append(li);
+      }
+      if (next > 6) document.getElementById('more').remove();
+    }, 300);
+  });
+</script>
 </body></html>

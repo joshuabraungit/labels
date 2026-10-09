@@ -11,13 +11,13 @@ It has two parts:
 
 **Today:** every day the Library picks 5 posts from your saves for a **Today** section at the top of the sidebar, so good posts come back around instead of getting buried. Posts you haven't seen in a while come first, nothing repeats within 30 days, and posts saved in the last few days or still in To sort are left out. The picks stay the same all day and change at midnight; **Show 5 more** adds a few extra. When a new day's picks are ready, the Labels icon shows a small number, and the Library opens on Today.
 
-**Posts you saved with LinkedIn's own Save button:** open LinkedIn's Saved posts page (`linkedin.com/my-items/saved-posts/`) and scroll down until everything you want has loaded. A bar at the bottom says **Add N posts to Labels**; one click brings them all in under **To sort**, with their text, author and image. Then click **Sort N posts** (or **Start sorting** in the Library) to go through them one at a time: number keys **1–9** tick labels, **/** finds or creates one, **Enter** saves and moves on, **S** skips, **Delete** removes. A post leaves To sort as soon as it has a real label, and To sort disappears when it's empty. LinkedIn's own Saved list isn't changed.
+**Posts you saved with LinkedIn's own Save button** (on your phone too): open LinkedIn's Saved posts page (`linkedin.com/my-items/saved-posts/`). The bar at the bottom says **Import all saved posts**: Labels scrolls the page at a calm pace until LinkedIn has loaded every save (with a **Stop** button), reads each one's text, author and image, and adds them under **To sort**. After that, the button says **Import new**: it only takes what you've saved since, stopping at the first post Labels already has, so it's usually done in seconds. Then click **Sort N posts** (or **Start sorting** in the Library) to go through them one at a time: number keys **1–9** tick labels, **/** finds or creates one, **Enter** saves and moves on, **S** skips, **Delete** removes. A post leaves To sort as soon as it has a real label, and To sort disappears when it's empty. LinkedIn's own Saved list isn't changed.
 
 Every saved post has at least one label. Deleting a label warns you first and says how many posts go with it (posts with other labels keep them).
 
 ## Install (unpacked)
 
-1. Download `release/labels-extension-3.3.0.zip` and unzip it. You should get a folder with `manifest.json` at the top.
+1. Download `release/labels-extension-3.4.0.zip` and unzip it. You should get a folder with `manifest.json` at the top.
 2. In Chrome, go to `chrome://extensions` and turn on **Developer mode** (top right).
 3. Click **Load unpacked** and pick the unzipped folder.
 4. Click the puzzle icon in the toolbar and pin **Labels** so the Library is one click away.
@@ -41,7 +41,7 @@ To update, unzip the new version over the same folder and click the reload icon 
 | `storage`                            | Keep your labels and saved posts locally.                               |
 | Content script on `www.linkedin.com` | Add the Label button to posts and show the picker. Nothing runs on other sites. |
 
-Chrome shows **"Read and change your data on www.linkedin.com"** at install, because of the Label buttons. The only thing Labels clicks on LinkedIn is the "…see more" link of the post you're labeling.
+Chrome shows **"Read and change your data on www.linkedin.com"** at install, because of the Label buttons. Labels only acts on LinkedIn when you ask: it clicks the "…see more" link of posts you're saving, and when you click **Import** on your Saved posts page it scrolls that page (and presses LinkedIn's "Show more results") to load your saves.
 
 Labels is an independent tool. It isn't affiliated with or endorsed by LinkedIn. If LinkedIn changes its page layout, the buttons may stop appearing until Labels is updated.
 
