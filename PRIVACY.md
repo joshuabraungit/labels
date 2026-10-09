@@ -20,9 +20,9 @@ That's all. Labels does not store or read comments, other posts, your LinkedIn a
 
 ## When Labels reads page content
 
-- **Label buttons:** on www.linkedin.com, Labels adds a small Label button under posts. It reads a post's link, visible text, author name, headline, profile photo link and image link **only when you click that post's Label button or press the Labels keyboard shortcut**, and only for that one post.
+- **Label buttons:** on www.linkedin.com, Labels adds a small Label button under posts. It reads a post's link, visible text, author name, headline, profile photo link and image link **only when you click that post's Label button or press the Labels keyboard shortcut**, and only for that one post. On LinkedIn's Saved posts page, if you click **Add N posts to Labels**, it reads the same details for each post loaded on that page (expanding each one's "…see more"), and nothing else.
 
-Labels does not run on any website other than www.linkedin.com. The only thing it ever clicks on LinkedIn is a post's "…see more" link, and only on the post you're labeling, so it can read the whole post. It does not scroll, post, message, like or otherwise automate anything on LinkedIn.
+Labels does not run on any website other than www.linkedin.com. The only thing it ever clicks on LinkedIn is a post's "…see more" link, and only on the posts you're saving, so it can read the whole post. It does not scroll, post, message, like or otherwise automate anything on LinkedIn.
 
 ## Where your data goes
 

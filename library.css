@@ -735,3 +735,159 @@ kbd {
 .card-body {
   flex: 1;
 }
+
+/* To sort */
+.sort-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin: 0 4px 0 2px;
+  border-radius: 50%;
+  background: #f08c00;
+}
+
+.nav-item.to-sort {
+  font-weight: 600;
+}
+
+.sort-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1400px;
+  margin: 0 auto 16px;
+  padding: 12px 12px 12px 18px;
+  border: 1px solid #f6d9a8;
+  border-radius: var(--radius);
+  background: #fff7e8;
+}
+
+/* Sort mode */
+.sorter {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.sorter-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.sorter-head h1 {
+  flex: 1;
+  margin: 0;
+  font-size: 22px;
+}
+
+.progress {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-bar {
+  height: 4px;
+  margin-bottom: 16px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.progress-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.sort-card .post-image {
+  height: auto;
+  max-height: 300px;
+}
+
+.sort-text {
+  max-height: 40vh;
+  overflow-y: auto;
+  font-size: 15px;
+}
+
+.sort-labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 0;
+}
+
+.sort-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  font-weight: 500;
+}
+
+.sort-label:hover {
+  border-color: var(--accent);
+}
+
+.sort-label.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.sort-label.on kbd {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.sort-find {
+  flex: 1 1 220px;
+  min-width: 200px;
+}
+
+.sort-error {
+  margin-top: 10px;
+}
+
+.sort-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.sort-actions .btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sort-actions kbd {
+  margin-left: 4px;
+}
+
+.btn.primary kbd {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.sorter.done {
+  padding: 60px 0;
+  text-align: center;
+}
+
+.sorter.done h1 {
+  margin: 0 0 8px;
+}
+
+.sorter.done p {
+  margin: 0 0 20px;
+  color: var(--muted);
+}

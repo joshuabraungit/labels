@@ -11,6 +11,7 @@ import {
   PINNED_ID,
   pinnedCount,
   cleanMeta,
+  toSortLabelId,
   postsAsMarkdown,
   searchPosts,
   STORAGE_KEY,
@@ -337,7 +338,34 @@ test('cleanMeta drops unsafe or empty values', () => {
   assert.deepEqual(cleanMeta({ name: 'X', avatar: 'javascript:alert(1)', image: 'http://insecure/p.jpg' }), {
     author: { name: 'X' },
   });
-  assert.equal(cleanMeta({ name: 'X', avatar: 'data:image/png;base64,AAA' }).author.avatar, 'data:image/png;base64,AAA');
+  assert.equal(
+    cleanMeta({ name: 'X', avatar: 'data:image/png;base64,AAA' }).author.avatar,
+    'data:image/png;base64,AAA',
+  );
+});
+
+test('"To sort": bring posts in, drop it once a post gets real labels, then it goes away', async () => {
+  const A = 'urn:li:activity:7212345678901234567';
+  const B = 'urn:li:activity:7200000000000000001';
+  const store = createStore(memoryArea());
+  const { result: ideas } = await store.createLabel('Ideas');
+  await store.savePost({ id: B, url: POST_B, excerpt: 'b', labelIds: [ideas.id] });
+  const { data, result } = await store.addToSort([
+    { id: A, url: POST_A, excerpt: 'a', text: 'a full', meta: { name: 'Jane' } },
+    { id: B, url: POST_B, excerpt: 'b' },
+    { id: 'bad', url: POST_A },
+  ]);
+  assert.equal(result.added, 1, 'posts already in Labels are left alone');
+  const sortId = toSortLabelId(data);
+  assert.equal(data.labels[sortId].name, 'To sort');
+  assert.deepEqual(data.posts[A].labelIds, [sortId]);
+  assert.equal(data.posts[A].author.name, 'Jane');
+  assert.deepEqual(data.posts[B].labelIds, [ideas.id]);
+
+  // Giving the post a real label drops "To sort"; with nothing left, the label goes.
+  const { data: after } = await store.setPostLabels(A, [sortId, ideas.id]);
+  assert.deepEqual(after.posts[A].labelIds, [ideas.id]);
+  assert.equal(toSortLabelId(after), null);
 });
 
 test('backup round trip merges without duplicates', async () => {

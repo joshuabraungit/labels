@@ -30,6 +30,24 @@
     .label-btn:focus-visible { outline: 2px solid #6d4fc2; outline-offset: 2px; }
   `;
 
+  // The "Add N posts to Labels" bar on LinkedIn's Saved posts page.
+  const IMPORT_CSS = `${BASE_CSS}
+    .bar {
+      position: fixed; z-index: 2147482000; left: 50%; bottom: 20px; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; max-width: calc(100vw - 32px);
+      background: #1c1b22; color: #fff; border-radius: 999px; box-shadow: 0 8px 28px rgba(20, 20, 40, 0.28);
+      font-size: 14px; white-space: nowrap;
+    }
+    .bar .icon { display: inline-flex; color: #c9b8ff; }
+    .bar .note { color: #e4def6; overflow: hidden; text-overflow: ellipsis; }
+    .bar button { border: 0; border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 13px; cursor: pointer; }
+    .bar .primary { background: #6d4fc2; color: #fff; }
+    .bar .primary:hover { background: #7d62cc; }
+    .bar .primary:disabled { opacity: 0.6; cursor: default; }
+    .bar .ghost { background: transparent; color: #e4def6; }
+    .bar .ghost:hover { background: rgba(255, 255, 255, 0.1); }
+  `;
+
   const PANEL_CSS = `${BASE_CSS}
     .panel {
       position: fixed; z-index: 2147483000; width: 360px; max-width: calc(100vw - 16px);
@@ -99,6 +117,12 @@
   const buttons = new Map(); // post id -> { host, button, container }
   let savedIds = new Set();
   let savedNames = {}; // post ID -> its label names, shown on the button
+  // LinkedIn's Saved posts page: the bar that brings every loaded post into Labels.
+  let importHost = null;
+  let importing = null; // { done, total } while reading posts
+  let importNote = ''; // "Added 12 posts to To sort." after an import
+  let toSortCount = 0; // posts waiting under "To sort"
+  const countToSort = labels => labels?.find(l => l.name.toLocaleLowerCase() === 'to sort')?.count ?? 0;
   let panel = null; // open picker state
 
   // ---------- helpers ----------
@@ -223,6 +247,88 @@
     else entry.button.removeAttribute('title');
   }
 
+  const isSavedPage = () => /^\/my-items\/saved-posts/.test(location.pathname);
+
+  // Adds every post loaded on the page that isn't in Labels yet, under "To sort".
+  async function importAll() {
+    const ids = [...buttons.keys()].filter(id => !savedIds.has(id));
+    if (!ids.length || importing) return;
+    importing = { done: 0, total: ids.length };
+    importNote = '';
+    renderImportBar();
+    const posts = [];
+    for (const id of ids) {
+      const container = buttons.get(id)?.container;
+      posts.push({
+        postId: id,
+        text: container ? await readFullText(container) : '',
+        meta: container ? labelsPostMeta(container) : null,
+      });
+      importing.done++;
+      renderImportBar();
+    }
+    try {
+      const state = await send('addToSort', { posts });
+      toSortCount = countToSort(state.labels);
+      savedIds = new Set(state.savedIds);
+      savedNames = state.savedLabels ?? {};
+      buttons.forEach((_, id) => paintButton(id));
+      importNote = `Added ${state.added} post${state.added === 1 ? '' : 's'} to To sort.`;
+    } catch (err) {
+      importNote = err.message;
+    }
+    importing = null;
+    renderImportBar();
+  }
+
+  function renderImportBar() {
+    if (!isSavedPage() || !buttons.size) {
+      importHost?.remove();
+      importHost = null;
+      return;
+    }
+    if (!importHost) {
+      importHost = h('div', { 'data-labels-ui': 'import' });
+      importHost.attachShadow({ mode: 'open' });
+    }
+    if (!importHost.isConnected) document.body.append(importHost);
+    const unsaved = [...buttons.keys()].filter(id => !savedIds.has(id)).length;
+    const posts = n => `${n} post${n === 1 ? '' : 's'}`;
+    const openLibrary = (view = '') => send('openLibrary', { view }).catch(err => console.warn('Labels:', err));
+    let parts;
+    if (importing) {
+      parts = [
+        h('span', { class: 'note', role: 'status' }, `Reading ${importing.done} of ${posts(importing.total)}\u2026`),
+      ];
+    } else if (unsaved) {
+      parts = [
+        importNote && h('span', { class: 'note', role: 'status' }, importNote),
+        h('button', { class: 'primary', type: 'button', onClick: importAll }, `Add ${posts(unsaved)} to Labels`),
+        !importNote && h('span', { class: 'note' }, 'Scroll down first to load more.'),
+      ];
+    } else {
+      parts = [
+        h('span', { class: 'note', role: 'status' }, importNote || 'Every post on this page is in Labels.'),
+        toSortCount
+          ? h(
+              'button',
+              { class: 'primary', type: 'button', onClick: () => openLibrary('sort') },
+              `Sort ${posts(toSortCount)}`,
+            )
+          : h('button', { class: 'ghost', type: 'button', onClick: () => openLibrary() }, 'Open Library'),
+      ];
+    }
+    const bar = h(
+      'div',
+      { class: 'bar', role: 'region', 'aria-label': 'Add saved posts to Labels' },
+      h('span', { class: 'icon' }),
+      parts,
+    );
+    importHost.shadowRoot.replaceChildren(h('style', null, IMPORT_CSS), bar);
+    const icon = importHost.shadowRoot.querySelector('.icon');
+    if (icon) icon.innerHTML = TAG_ICON;
+  }
+
   function scan() {
     const root = document.querySelector('main') || document.body;
     let posts;
@@ -238,6 +344,7 @@
       entry?.host.remove();
       addButton(id, container);
     }
+    renderImportBar();
   }
 
   let scanTimer = 0;
@@ -844,7 +951,9 @@
       const state = await send('getState', { postId: panel?.postId });
       savedIds = new Set(state.savedIds);
       savedNames = state.savedLabels ?? {};
+      toSortCount = countToSort(state.labels);
       buttons.forEach((_, id) => paintButton(id));
+      renderImportBar();
       if (panel && !panel.loading && state) {
         panel.labels = state.labels;
         panel.post = state.post;

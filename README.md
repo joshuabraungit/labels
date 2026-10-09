@@ -9,11 +9,13 @@ It has two parts:
    - **Left:** All Posts, your labels (with counts, **+** to add, ⋯ to rename or delete), the people you've saved posts from, and Export / Import.
    - **Right:** a search box and every saved post as a card: the author's photo, name and headline, when you saved it, the post's image, its text (**Expand** for long posts) and its labels. Each card has **Open** (on LinkedIn), **Edit labels** and delete.
 
+**Posts you saved with LinkedIn's own Save button:** open LinkedIn's Saved posts page (`linkedin.com/my-items/saved-posts/`) and scroll down until everything you want has loaded. A bar at the bottom says **Add N posts to Labels**; one click brings them all in under **To sort**, with their text, author and image. Then click **Sort N posts** (or **Start sorting** in the Library) to go through them one at a time: number keys **1–9** tick labels, **/** finds or creates one, **Enter** saves and moves on, **S** skips, **Delete** removes. A post leaves To sort as soon as it has a real label, and To sort disappears when it's empty. LinkedIn's own Saved list isn't changed.
+
 Every saved post has at least one label. Deleting a label warns you first and says how many posts go with it (posts with other labels keep them).
 
 ## Install (unpacked)
 
-1. Download `release/labels-extension-3.1.0.zip` and unzip it. You should get a folder with `manifest.json` at the top.
+1. Download `release/labels-extension-3.2.0.zip` and unzip it. You should get a folder with `manifest.json` at the top.
 2. In Chrome, go to `chrome://extensions` and turn on **Developer mode** (top right).
 3. Click **Load unpacked** and pick the unzipped folder.
 4. Click the puzzle icon in the toolbar and pin **Labels** so the Library is one click away.

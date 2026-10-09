@@ -10,6 +10,7 @@ import {
   searchPosts,
   sortedLabels,
   STORAGE_KEY,
+  toSortLabelId,
 } from './lib/store.js';
 
 const store = createStore(chrome.storage.local);
@@ -30,6 +31,8 @@ const state = {
   toast: '',
   shortcut: '',
   focus: null,
+  // Sort mode: one post at a time from "To sort". { queue, index, chosen, query, sorted, skipped, error }
+  sort: null,
 };
 
 // ---------- helpers ----------
@@ -282,7 +285,9 @@ function renderLabelRow(row) {
 
 function renderSidebar() {
   const total = Object.keys(state.data.posts).length;
-  const labels = labelsWithCounts(state.data);
+  const sortId = toSortLabelId(state.data);
+  const labels = labelsWithCounts(state.data).filter(l => l.id !== sortId);
+  const toSort = sortId ? (labelsWithCounts(state.data).find(l => l.id === sortId)?.count ?? 0) : 0;
   const folks = people();
   return h(
     'aside',
@@ -306,6 +311,15 @@ function renderSidebar() {
       cls: 'all',
       onClick: () => setFilter({ kind: 'all' }),
     }),
+    toSort > 0 &&
+      navItem({
+        label: 'To sort',
+        count: toSort,
+        active: state.filter.kind === 'label' && state.filter.id === sortId,
+        cls: 'to-sort',
+        lead: h('span', { class: 'sort-dot', 'aria-hidden': 'true' }),
+        onClick: () => setFilter({ kind: 'label', id: sortId }),
+      }),
     h(
       'div',
       { class: 'section-head' },
@@ -352,7 +366,10 @@ function renderSidebar() {
 
 function renderEditPopover(post) {
   const q = state.editQuery.trim();
-  const labels = sortedLabels(state.data).filter(l => l.name.toLocaleLowerCase().includes(q.toLocaleLowerCase()));
+  const sortId = toSortLabelId(state.data);
+  const labels = sortedLabels(state.data).filter(
+    l => l.id !== sortId && l.name.toLocaleLowerCase().includes(q.toLocaleLowerCase()),
+  );
   const exists = sortedLabels(state.data).some(l => l.name.toLocaleLowerCase() === q.toLocaleLowerCase());
   const only = post.labelIds.length === 1;
   const toggle = (id, on) =>
@@ -514,7 +531,284 @@ function renderCard(post) {
   );
 }
 
+// ---------- sort mode ----------
+
+function renderSortBanner() {
+  const sortId = toSortLabelId(state.data);
+  const count = sortId ? Object.values(state.data.posts).filter(p => p.labelIds.includes(sortId)).length : 0;
+  if (!count || state.query.trim() || state.filter.kind === 'person') return null;
+  if (state.filter.kind === 'label' && state.filter.id !== sortId) return null;
+  return h(
+    'div',
+    { class: 'sort-banner' },
+    h('span', null, h('strong', null, plural(count, 'post')), ' to sort. Give each one a label with a key press.'),
+    h('button', { class: 'btn primary', 'data-focus': 'start-sorting', onClick: startSorting }, 'Start sorting'),
+  );
+}
+
+function startSorting() {
+  const sortId = toSortLabelId(state.data);
+  const queue = sortId
+    ? Object.values(state.data.posts)
+        .filter(p => p.labelIds.includes(sortId))
+        .sort((a, b) => b.savedAt - a.savedAt)
+        .map(p => p.id)
+    : [];
+  state.sort = { queue, index: 0, chosen: new Set(), query: '', sorted: 0, skipped: 0, error: '' };
+  state.editing = null;
+  render();
+  window.scrollTo(0, 0);
+}
+
+function stopSorting() {
+  state.sort = null;
+  if (location.hash === '#sort') history.replaceState(null, '', location.pathname);
+  render();
+}
+
+// The post being sorted, skipping any that were labeled or deleted elsewhere meanwhile.
+function currentSortPost() {
+  const s = state.sort;
+  const sortId = toSortLabelId(state.data);
+  while (s.index < s.queue.length) {
+    const post = state.data.posts[s.queue[s.index]];
+    if (post && sortId && post.labelIds.includes(sortId)) return post;
+    s.index++;
+  }
+  return null;
+}
+
+function sortLabels() {
+  const sortId = toSortLabelId(state.data);
+  const q = state.sort.query.trim().toLocaleLowerCase();
+  return sortedLabels(state.data).filter(l => l.id !== sortId && l.name.toLocaleLowerCase().includes(q));
+}
+
+function nextSortPost() {
+  const s = state.sort;
+  s.index++;
+  s.chosen = new Set();
+  s.query = '';
+  s.error = '';
+}
+
+const sortActions = {
+  toggle(id) {
+    const s = state.sort;
+    if (s.chosen.has(id)) s.chosen.delete(id);
+    else s.chosen.add(id);
+    s.error = '';
+    render();
+  },
+  async save() {
+    const s = state.sort;
+    const post = currentSortPost();
+    if (!post) return;
+    if (!s.chosen.size) {
+      s.error = 'Pick a label first (number keys), or press S to skip.';
+      return render();
+    }
+    try {
+      const { data } = await store.setPostLabels(post.id, [...s.chosen]);
+      state.data = data;
+      s.sorted++;
+      nextSortPost();
+    } catch (err) {
+      s.error = errorMessage(err);
+    }
+    render();
+  },
+  skip() {
+    state.sort.skipped++;
+    nextSortPost();
+    render();
+  },
+  async remove() {
+    const post = currentSortPost();
+    if (!post) return;
+    try {
+      const { data } = await store.removePost(post.id);
+      state.data = data;
+      nextSortPost();
+    } catch (err) {
+      state.sort.error = errorMessage(err);
+    }
+    render();
+  },
+  // Enter in the find box: tick the one match, or create the label.
+  async pick() {
+    const s = state.sort;
+    const q = s.query.trim();
+    if (!q) return;
+    const exact = sortedLabels(state.data).find(l => l.name.toLocaleLowerCase() === q.toLocaleLowerCase());
+    const matches = sortLabels();
+    try {
+      let id = exact?.id ?? (matches.length === 1 ? matches[0].id : null);
+      if (!id) {
+        const { data, result } = await store.createLabel(q);
+        state.data = data;
+        id = result.id;
+      }
+      s.chosen.add(id);
+      s.query = '';
+      s.error = '';
+    } catch (err) {
+      s.error = errorMessage(err);
+    }
+    render();
+  },
+};
+
+function renderSorter() {
+  const s = state.sort;
+  const post = currentSortPost();
+  const total = s.queue.length;
+  if (!post) {
+    return h(
+      'main',
+      { class: 'main' },
+      h(
+        'div',
+        { class: 'sorter done' },
+        h('h1', null, s.skipped ? 'Done for now' : 'All sorted!'),
+        h(
+          'p',
+          null,
+          `You labeled ${plural(s.sorted, 'post')}.`,
+          s.skipped
+            ? ` ${plural(s.skipped, 'post')} you skipped ${s.skipped === 1 ? 'is' : 'are'} still in To sort.`
+            : '',
+        ),
+        h('button', { class: 'btn primary', 'data-focus': 'sort-done', onClick: stopSorting }, 'Back to Library'),
+      ),
+    );
+  }
+  const labels = sortLabels();
+  const body = post.text || post.excerpt;
+  const image =
+    post.image && h('img', { class: 'post-image', src: post.image, alt: '', referrerpolicy: 'no-referrer' });
+  image?.addEventListener('error', () => image.remove());
+  return h(
+    'main',
+    { class: 'main' },
+    h(
+      'div',
+      { class: 'sorter' },
+      h(
+        'div',
+        { class: 'sorter-head' },
+        h('h1', null, 'Sorting'),
+        h('span', { class: 'progress', role: 'status' }, `${Math.min(s.index + 1, total)} of ${total}`),
+        h('button', { class: 'btn', onClick: stopSorting }, 'Done'),
+      ),
+      h('div', { class: 'progress-bar' }, h('span', { style: `width:${(100 * s.index) / Math.max(total, 1)}%` })),
+      h(
+        'article',
+        { class: 'card sort-card', 'data-post': post.id },
+        h(
+          'div',
+          { class: 'card-body' },
+          h(
+            'div',
+            { class: 'author' },
+            avatar(post.author?.avatar, post.author?.name, 'avatar'),
+            h(
+              'div',
+              { class: 'who' },
+              h('div', { class: 'name' }, post.author?.name || 'LinkedIn post'),
+              post.author?.headline && h('div', { class: 'headline' }, post.author.headline),
+              h(
+                'div',
+                { class: 'when' },
+                h('a', { href: post.url, target: '_blank', rel: 'noopener' }, 'Open on LinkedIn'),
+              ),
+            ),
+          ),
+          image,
+          body
+            ? h('p', { class: 'text sort-text' }, body)
+            : h('p', { class: 'text fallback' }, 'No text was saved for this post.'),
+        ),
+      ),
+      h(
+        'div',
+        { class: 'sort-labels', role: 'group', 'aria-label': 'Labels' },
+        labels.map((l, i) =>
+          h(
+            'button',
+            {
+              class: `sort-label${s.chosen.has(l.id) ? ' on' : ''}`,
+              'aria-pressed': String(s.chosen.has(l.id)),
+              onClick: () => sortActions.toggle(l.id),
+            },
+            i < 9 && !s.query && h('kbd', null, String(i + 1)),
+            l.name,
+          ),
+        ),
+        h('input', {
+          class: 'field sort-find',
+          type: 'text',
+          value: s.query,
+          placeholder: 'Find or create a label\u2026  ( / )',
+          'aria-label': 'Find or create a label',
+          'data-focus': 'sort-find',
+          onInput: e => {
+            s.query = e.target.value;
+            render();
+          },
+          onKeydown: e => {
+            e.stopPropagation();
+            if (e.key === 'Enter') sortActions.pick().then(() => document.activeElement?.blur());
+            else if (e.key === 'Escape') {
+              s.query = '';
+              render();
+              document.activeElement?.blur();
+            }
+          },
+        }),
+      ),
+      s.error && h('p', { class: 'error sort-error', role: 'alert' }, s.error),
+      h(
+        'div',
+        { class: 'sort-actions' },
+        h('button', { class: 'btn', onClick: sortActions.skip }, 'Skip ', h('kbd', null, 'S')),
+        h('button', { class: 'btn', onClick: sortActions.remove }, 'Delete ', h('kbd', null, '\u232B')),
+        h(
+          'button',
+          { class: 'btn primary', disabled: !s.chosen.size, onClick: sortActions.save },
+          'Save & next ',
+          h('kbd', null, 'Enter'),
+        ),
+      ),
+    ),
+  );
+}
+
+// Sort mode's keys (not while typing in the find box).
+document.addEventListener('keydown', e => {
+  if (!state.sort || state.dialog || e.target.matches?.('input, textarea')) return;
+  if (!currentSortPost()) {
+    if (e.key === 'Enter' || e.key === 'Escape') stopSorting();
+    return;
+  }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const n = Number(e.key);
+  if (n >= 1 && n <= 9) {
+    const label = sortLabels()[n - 1];
+    if (label) sortActions.toggle(label.id);
+  } else if (e.key === 'Enter') sortActions.save();
+  else if (e.key === 's' || e.key === 'S') sortActions.skip();
+  else if (e.key === 'Delete' || e.key === 'Backspace') sortActions.remove();
+  else if (e.key === 'Escape') stopSorting();
+  else if (e.key === '/') {
+    state.focus = 'sort-find';
+    render();
+  } else return;
+  e.preventDefault();
+});
+
 function renderMain() {
+  if (state.sort) return renderSorter();
   const posts = visiblePosts();
   const total = Object.keys(state.data.posts).length;
   let empty = null;
@@ -547,6 +841,7 @@ function renderMain() {
       ),
       h('span', { class: 'total', role: 'status' }, plural(posts.length, 'post')),
     ),
+    renderSortBanner(),
     empty ? h('p', { class: 'empty' }, empty) : h('div', { class: 'list' }, posts.map(renderCard)),
   );
 }
@@ -737,7 +1032,13 @@ async function init() {
     .catch(() => {});
   state.data = await store.load();
   render();
+  if (location.hash === '#sort') startSorting();
   document.body.dataset.ready = 'true';
 }
+
+// "Sort them" on LinkedIn's Saved posts page opens the Library at #sort.
+window.addEventListener('hashchange', () => {
+  if (location.hash === '#sort' && !state.sort) startSorting();
+});
 
 init();

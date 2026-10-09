@@ -808,6 +808,67 @@ try {
     await saved.close();
   });
 
+  await check("LinkedIn's Saved posts page: add every post at once, then sort them by keyboard", async () => {
+    const saved = await context.newPage();
+    await saved.setViewportSize({ width: 1100, height: 900 });
+    await saved.goto(SAVED);
+    const P1 = 'urn:li:activity:7340000000000000001';
+    const P2 = 'urn:li:activity:7340000000000000002';
+    await feedButton(saved, P2).waitFor();
+    const bar = saved.locator('[data-labels-ui="import"] .bar');
+    await bar.getByRole('button', { name: 'Add 2 posts to Labels' }).click();
+    await bar.getByText('Added 2 posts to To sort.').waitFor();
+    await feedButton(saved, P1).getByText('To sort', { exact: true }).waitFor();
+    await shot(saved, '6-saved-import');
+
+    // "Sort 2 posts" opens the Library in Sort mode.
+    const [lib] = await Promise.all([
+      context.waitForEvent('page'),
+      bar.getByRole('button', { name: 'Sort 2 posts' }).click(),
+    ]);
+    await lib.setViewportSize({ width: 1200, height: 900 });
+    await lib.locator('.sorter .progress').waitFor();
+    assert.match(lib.url(), /library\.html#sort$/);
+    assert.equal(await lib.locator('.progress').textContent(), '1 of 2');
+    assert.equal(await lib.locator('.sort-card .who .name').textContent(), 'Faizan Example', 'author read on import');
+    const first = (await lib.locator('.sort-label').first().textContent()).replace(/^1/, '');
+    assert.ok(!(await lib.locator('.sort-label').allTextContents()).some(t => t.includes('To sort')));
+    // Enter with nothing picked explains; a number key ticks; Enter saves and moves on.
+    await lib.keyboard.press('Enter');
+    await lib.locator('.sort-error').waitFor();
+    await lib.keyboard.press('1');
+    assert.equal(await lib.locator('.sort-label.on').count(), 1);
+    await shot(lib, '7-sort-mode');
+    await lib.keyboard.press('Enter');
+    assert.equal(await lib.locator('.progress').textContent(), '2 of 2');
+    await lib.keyboard.press('s');
+    await lib.getByText('Done for now').waitFor();
+    assert.equal(
+      await lib.locator('.sorter.done p').textContent(),
+      'You labeled 1 post. 1 post you skipped is still in To sort.',
+    );
+    await lib.keyboard.press('Enter');
+    assert.equal(await lib.locator('.nav-item.to-sort .count').textContent(), '1');
+    let stored = await storedData(lib);
+    assert.deepEqual(
+      stored.posts[P1].labelIds.map(id => stored.labels[id].name),
+      [first],
+      '"To sort" dropped once a real label was picked',
+    );
+
+    // Sort again from the banner; delete the last one, and "To sort" goes away.
+    await lib.getByRole('button', { name: 'Start sorting' }).click();
+    await lib.keyboard.press('Delete');
+    await lib.getByText('All sorted!').waitFor();
+    await lib.getByRole('button', { name: 'Back to Library' }).click();
+    assert.equal(await lib.locator('.nav-item.to-sort').count(), 0);
+    stored = await storedData(lib);
+    assert.equal(stored.posts[P2], undefined);
+    assert.ok(!Object.values(stored.labels).some(l => l.name === 'To sort'));
+    await lib.close();
+    await saved.close();
+  });
+
   // ---------- keyboard shortcut ----------
   // Automation can't press a Chrome command shortcut, so these send the same message the
   // background worker sends when the shortcut is pressed.
