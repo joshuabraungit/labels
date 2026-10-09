@@ -600,7 +600,9 @@ const sortActions = {
     s.error = '';
     render();
   },
-  async save() {
+  // Moves on right away so fast typing never lands on the post just saved; the write
+  // happens in the background, and a failure shows up as a message.
+  save() {
     const s = state.sort;
     const post = currentSortPost();
     if (!post) return;
@@ -608,32 +610,38 @@ const sortActions = {
       s.error = 'Pick a label first (number keys), or press S to skip.';
       return render();
     }
-    try {
-      const { data } = await store.setPostLabels(post.id, [...s.chosen]);
-      state.data = data;
-      s.sorted++;
-      nextSortPost();
-    } catch (err) {
-      s.error = errorMessage(err);
-    }
+    const ids = [...s.chosen];
+    s.sorted++;
+    nextSortPost();
     render();
+    store.setPostLabels(post.id, ids).then(
+      ({ data }) => {
+        state.data = data;
+        render();
+      },
+      err => {
+        s.sorted--;
+        showToast(errorMessage(err));
+      },
+    );
   },
   skip() {
     state.sort.skipped++;
     nextSortPost();
     render();
   },
-  async remove() {
+  remove() {
     const post = currentSortPost();
     if (!post) return;
-    try {
-      const { data } = await store.removePost(post.id);
-      state.data = data;
-      nextSortPost();
-    } catch (err) {
-      state.sort.error = errorMessage(err);
-    }
+    nextSortPost();
     render();
+    store.removePost(post.id).then(
+      ({ data }) => {
+        state.data = data;
+        render();
+      },
+      err => showToast(errorMessage(err)),
+    );
   },
   // Enter in the find box: tick the one match, or create the label.
   async pick() {
