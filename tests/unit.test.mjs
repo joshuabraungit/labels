@@ -11,7 +11,6 @@ import {
   PINNED_ID,
   pinnedCount,
   cleanMeta,
-  toSortLabelId,
   dayKey,
   todayIsNew,
   todayPosts,
@@ -265,28 +264,6 @@ test('full text, notes, colors and search', async () => {
   assert.equal(cleanPostText(' a \r\n b '), 'a\nb');
 });
 
-test('labelMany adds labels to several posts and saves new ones', async () => {
-  const A = 'urn:li:activity:7212345678901234567';
-  const B = 'urn:li:activity:7200000000000000001';
-  const store = createStore(memoryArea());
-  const { result: x } = await store.createLabel('X');
-  const { result: y } = await store.createLabel('Y');
-  await store.savePost({ id: A, url: POST_A, excerpt: 'a', labelIds: [x.id] });
-  const { data, result } = await store.labelMany(
-    [
-      { id: A, url: POST_A, excerpt: 'a', text: 'a' },
-      { id: B, url: POST_B, excerpt: 'b', text: 'b full' },
-      { id: 'bad', url: POST_B },
-    ],
-    [y.id],
-  );
-  assert.deepEqual(result, { added: 1, updated: 1 });
-  assert.deepEqual(data.posts[A].labelIds.sort(), [x.id, y.id].sort());
-  assert.deepEqual(data.posts[B].labelIds, [y.id]);
-  assert.equal(data.posts[B].text, 'b full');
-  await assert.rejects(store.labelMany([{ id: A, url: POST_A }], []), /Pick or create a label/);
-});
-
 test('backups keep text, notes and colors', async () => {
   const A = 'urn:li:activity:7212345678901234567';
   const a = createStore(memoryArea());
@@ -352,31 +329,19 @@ test('cleanMeta drops unsafe or empty values', () => {
   );
 });
 
-test('"To sort": bring posts in, drop it once a post gets real labels, then it goes away', async () => {
+test('a "To sort" label left from older versions is an ordinary label now', async () => {
   const A = 'urn:li:activity:7212345678901234567';
-  const B = 'urn:li:activity:7200000000000000001';
   const store = createStore(memoryArea());
+  const { result: sort } = await store.createLabel('To sort');
   const { result: ideas } = await store.createLabel('Ideas');
-  await store.savePost({ id: B, url: POST_B, excerpt: 'b', labelIds: [ideas.id] });
-  const { data, result } = await store.addToSort([
-    { id: A, url: POST_A, excerpt: 'a', text: 'a full', meta: { name: 'Jane' } },
-    { id: B, url: POST_B, excerpt: 'b' },
-    { id: 'bad', url: POST_A },
-  ]);
-  assert.equal(result.added, 1, 'posts already in Labels are left alone');
-  const sortId = toSortLabelId(data);
-  assert.equal(data.labels[sortId].name, 'To sort');
-  assert.deepEqual(data.posts[A].labelIds, [sortId]);
-  assert.equal(data.posts[A].author.name, 'Jane');
-  assert.deepEqual(data.posts[B].labelIds, [ideas.id]);
-
-  // Giving the post a real label drops "To sort"; with nothing left, the label goes.
-  const { data: after } = await store.setPostLabels(A, [sortId, ideas.id]);
-  assert.deepEqual(after.posts[A].labelIds, [ideas.id]);
-  assert.equal(toSortLabelId(after), null);
+  await store.savePost({ id: A, url: POST_A, excerpt: 'a', labelIds: [sort.id] });
+  const { data } = await store.setPostLabels(A, [sort.id, ideas.id]);
+  assert.deepEqual(data.posts[A].labelIds, [sort.id, ideas.id], 'both labels stay');
+  const { data: after } = await store.removePost(A);
+  assert.equal(after.labels[sort.id].name, 'To sort', 'the label stays when empty');
 });
 
-test('Today: 5 older posts a day, no repeats for 30 days, never To sort or brand-new saves', async () => {
+test('Highlights: 5 older posts a day, no repeats for 30 days, never brand-new saves', async () => {
   const DAY = 86400000;
   const now = new Date(2026, 9, 9, 9).getTime();
   const area = memoryArea();
@@ -387,8 +352,6 @@ test('Today: 5 older posts a day, no repeats for 30 days, never To sort or brand
   for (const id of ids) await store.savePost({ id, url: url(id), excerpt: id, labelIds: [l.id] });
   const fresh = 'urn:li:activity:7399999999999999999';
   await store.savePost({ id: fresh, url: url(fresh), excerpt: 'new', labelIds: [l.id] });
-  const sortMe = 'urn:li:activity:7388888888888888888';
-  await store.addToSort([{ id: sortMe, url: url(sortMe), excerpt: 'sort me' }]);
   // Everything was saved 40 days ago except one post saved today.
   for (const p of Object.values(area.mem[STORAGE_KEY].posts)) p.savedAt = p.id === fresh ? now : now - 40 * DAY;
 
@@ -398,7 +361,6 @@ test('Today: 5 older posts a day, no repeats for 30 days, never To sort or brand
   const first = todayPosts(data, now).map(p => p.id);
   assert.equal(first.length, 5);
   assert.ok(!first.includes(fresh), 'not a post saved today');
-  assert.ok(!first.includes(sortMe), 'not To sort');
   // Same day: same picks. Seeing them clears the badge.
   ({ data } = await store.ensureToday(now + 3600000));
   assert.deepEqual(

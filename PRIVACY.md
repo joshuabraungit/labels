@@ -15,15 +15,15 @@ When you save a post, Labels stores the following in your browser's local extens
 - The post author's name, LinkedIn headline and the link to their profile photo, and the link to the post's main image
 - The labels you created and which posts you assigned them to
 - The date and time you saved each post
-- Which posts were shown in the Library's Today section and when, so they aren't repeated too soon
+- Which posts were shown in the Library's Highlights section and when, so they aren't repeated too soon
 
 That's all. Labels does not store or read comments, other posts, your LinkedIn account details, messages, contacts, browsing history or cookies. It stores links to the author's photo and the post's image, not the images themselves.
 
 ## When Labels reads page content
 
-- **Label buttons:** on www.linkedin.com, Labels adds a small Label button under posts. It reads a post's link, visible text, author name, headline, profile photo link and image link **only when you click that post's Label button or press the Labels keyboard shortcut**, and only for that one post. On LinkedIn's Saved posts page, if you click **Import all saved posts** or **Import new**, it scrolls that page to load your saved posts and reads the same details for each one (expanding each one's "…see more"), and nothing else.
+- **Label buttons:** on www.linkedin.com, Labels adds a small Label button under posts. It reads a post's link, visible text, author name, headline, profile photo link and image link **only when you click that post's Label button or press the Labels keyboard shortcut**, and only for that one post.
 
-Labels does not run on any website other than www.linkedin.com. Labels only acts on LinkedIn when you ask it to: it clicks a post's "…see more" link on the posts you're saving, so it can read the whole post, and when you click Import on your Saved posts page it scrolls that page (and presses LinkedIn's "Show more results") at a normal pace to load your saves. You can stop an import at any time. It does not post, message, like, follow or otherwise act on LinkedIn.
+Labels does not run on any website other than www.linkedin.com. Labels only acts on LinkedIn when you ask it to: it clicks a post's "…see more" link on the posts you're saving, so it can read the whole post. It does not post, message, like, follow or otherwise act on LinkedIn.
 
 ## Where your data goes
 

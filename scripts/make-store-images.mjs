@@ -150,6 +150,9 @@ try {
   await page.goto(`chrome-extension://${extId}/library.html`);
   await page.evaluate(d => chrome.storage.local.set({ 'labels.data.v1': d }), data);
   await page.reload();
+  // The Library opens on Highlights; the screenshots show everything.
+  await page.locator('body[data-ready]').waitFor();
+  await page.locator('.nav-item', { hasText: 'All Posts' }).click();
   await page.locator('.card').first().waitFor();
   await page.waitForTimeout(300);
   const shotView = async () => `data:image/png;base64,${(await page.screenshot()).toString('base64')}`;

@@ -805,77 +805,7 @@ try {
       'Saved post one: I collect cold email subject lines I wish I wrote. Here are 7 from people who study outbound.',
     );
     await saved.keyboard.press('Escape');
-    await saved.close();
-  });
-
-  await check("LinkedIn's Saved posts page: Import all scrolls to load every save, then sort by keyboard", async () => {
-    const saved = await context.newPage();
-    await saved.setViewportSize({ width: 1100, height: 900 });
-    await saved.goto(SAVED);
-    const P1 = 'urn:li:activity:7340000000000000001';
-    const P2 = 'urn:li:activity:7340000000000000002';
-    const all = [1, 2, 3, 4, 5, 6].map(n => `urn:li:activity:734000000000000000${n}`);
-    await feedButton(saved, P2).waitFor();
-    const bar = saved.locator('[data-labels-ui="import"] .bar');
-    // Only 2 of 6 saves are loaded; Import all loads the rest ("Show more results").
-    await bar.getByRole('button', { name: 'Import all saved posts' }).click();
-    await bar.getByText('Imported 6 posts to To sort.').waitFor({ timeout: 20000 });
-    assert.equal(await saved.locator('#more').count(), 0, 'loaded to the end of the list');
-    for (const id of all) await feedButton(saved, id).getByText('To sort', { exact: true }).waitFor();
-    await shot(saved, '6-saved-import');
-
-    // "Sort 6 posts" opens the Library in Sort mode.
-    const [lib] = await Promise.all([
-      context.waitForEvent('page'),
-      bar.getByRole('button', { name: 'Sort 6 posts' }).click(),
-    ]);
-    await lib.setViewportSize({ width: 1200, height: 900 });
-    await lib.locator('.sorter .progress').waitFor();
-    assert.match(lib.url(), /library\.html#sort$/);
-    assert.equal(await lib.locator('.progress').textContent(), '1 of 6');
-    assert.equal(
-      await lib.locator('.sort-card .who .name').textContent(),
-      'Faizan Example',
-      'newest first, author read',
-    );
-    const first = (await lib.locator('.sort-label').first().textContent()).replace(/^1/, '');
-    assert.ok(!(await lib.locator('.sort-label').allTextContents()).some(t => t.includes('To sort')));
-    // Enter with nothing picked explains; a number key ticks; Enter saves and moves on.
-    await lib.keyboard.press('Enter');
-    await lib.locator('.sort-error').waitFor();
-    await lib.keyboard.press('1');
-    assert.equal(await lib.locator('.sort-label.on').count(), 1);
-    await shot(lib, '7-sort-mode');
-    await lib.keyboard.press('Enter');
-    assert.equal(await lib.locator('.progress').textContent(), '2 of 6');
-    await lib.keyboard.press('Delete');
-    for (let k = 0; k < 4; k++) await lib.keyboard.press('s');
-    await lib.getByText('Done for now').waitFor();
-    assert.equal(
-      await lib.locator('.sorter.done p').textContent(),
-      'You labeled 1 post. 4 posts you skipped are still in To sort.',
-    );
-    await lib.keyboard.press('Enter');
-    assert.equal(await lib.locator('.nav-item.to-sort .count').textContent(), '4');
-    const stored = await storedData(lib);
-    assert.deepEqual(
-      stored.posts[P1].labelIds.map(id => stored.labels[id].name),
-      [first],
-      '"To sort" dropped once a real label was picked',
-    );
-    assert.equal(stored.posts[P2], undefined, 'deleted in Sort mode');
-    assert.equal(stored.posts[all[5]].author.name, 'Omar Example');
-
-    // Import new: only posts saved since last time; stops at the first one already in Labels.
-    await saved.reload();
-    await feedButton(saved, P1).waitFor();
-    await bar.getByRole('button', { name: 'Import new' }).click();
-    await bar.getByText('Imported 1 post to To sort.').waitFor({ timeout: 20000 });
-    assert.equal(await saved.locator('#more').count(), 1, 'did not scroll past known posts');
-    assert.ok((await storedData(lib)).posts[P2], 'the deleted post came back as new');
-    await bar.getByRole('button', { name: 'Import new' }).click();
-    await bar.getByText('Nothing new to import.').waitFor();
-    await lib.close();
+    assert.equal(await saved.locator('[data-labels-ui="import"]').count(), 0, 'no import bar');
     await saved.close();
   });
 
@@ -993,7 +923,7 @@ try {
     await p.close();
   });
 
-  await check('Today: older posts resurface, with a badge, Show 5 more, and the same picks all day', async () => {
+  await check('Highlights: older posts resurface, with a badge, Show 5 more, and the same picks all day', async () => {
     const p = await openLibrary(context, extId);
     const DAY = 86400000;
     const now = Date.now();
@@ -1023,16 +953,17 @@ try {
     );
     await p.waitForFunction(async () => (await chrome.action.getBadgeText({})) === '5');
 
-    // Opening the Library on a new day shows Today first, and clears the badge.
+    // Opening the Library on a new day shows Highlights first, and clears the badge.
     await p.reload();
     await p.locator('body[data-ready]').waitFor();
-    assert.equal(await p.locator('.nav-item.active .name').textContent(), 'Today');
+    assert.equal(await p.locator('.nav-item.active .name').textContent(), 'Highlights');
+    assert.equal(await p.locator('.highlights-head h1').textContent(), 'Highlights');
     assert.equal(await p.locator('.card').count(), 5);
     assert.match(await p.locator('.card .when').first().textContent(), /^From \d+ (weeks|months) ago$/);
     assert.ok(!(await p.locator('.card .text').allTextContents()).includes('Saved today'));
     await p.waitForFunction(async () => (await chrome.action.getBadgeText({})) === '');
     const picked = await p.locator('.card').evaluateAll(cards => cards.map(c => c.dataset.post));
-    await shot(p, '8-today');
+    await shot(p, '8-highlights');
 
     // Show 5 more: only 3 older posts are left.
     await p.getByRole('button', { name: 'Show 3 more' }).click();
@@ -1042,7 +973,7 @@ try {
     // Same picks after reopening; All Posts still has everything.
     await p.reload();
     await p.locator('body[data-ready]').waitFor();
-    await navTo(p, 'Today');
+    await navTo(p, 'Highlights');
     assert.deepEqual(
       (await p.locator('.card').evaluateAll(cards => cards.map(c => c.dataset.post))).slice(0, 5),
       picked,

@@ -38,21 +38,10 @@ function view(data, postId) {
 }
 
 const handlers = {
-  // The picker's "Library" link, and "Sort them" on the Saved posts page.
-  async openLibrary({ view }) {
-    await openLibrary(view === 'sort' ? '#sort' : '');
+  // The picker's "Library" link.
+  async openLibrary() {
+    await openLibrary();
     return {};
-  },
-
-  // "Add N posts to Labels" on LinkedIn's Saved posts page: everything under "To sort".
-  async addToSort({ posts }) {
-    const records = (Array.isArray(posts) ? posts : []).flatMap(({ postId, text, meta }) => {
-      const page = classifyUrl(`https://www.linkedin.com/feed/update/${postId}/`);
-      if (page.kind !== 'post' || page.id !== postId) return [];
-      return [{ id: page.id, url: page.url, excerpt: makeExcerpt(text), text, meta }];
-    });
-    const { data, result } = await store.addToSort(records);
-    return { ...view(data, null), added: result.added };
   },
 
   // Adds the full text (and a preview, if missing) to an already-saved post. Never shortens.
@@ -108,24 +97,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // switches to it if it's already open, or opens it.
 const LIBRARY_URL = chrome.runtime.getURL('library.html');
 
-async function openLibrary(hash = '') {
+async function openLibrary() {
   try {
     const contexts = await chrome.runtime.getContexts({ contextTypes: ['TAB'] });
     const open = contexts.find(c => c.tabId >= 0 && c.documentUrl?.startsWith(LIBRARY_URL));
     if (open) {
-      await chrome.tabs.update(open.tabId, { active: true, ...(hash ? { url: LIBRARY_URL + hash } : {}) });
+      await chrome.tabs.update(open.tabId, { active: true });
       await chrome.windows.update(open.windowId, { focused: true });
       return;
     }
   } catch (err) {
     console.warn('Labels: could not look for an open Library tab', err);
   }
-  await chrome.tabs.create({ url: LIBRARY_URL + hash });
+  await chrome.tabs.create({ url: LIBRARY_URL });
 }
 
 chrome.action.onClicked.addListener(() => openLibrary());
 
-// A badge on the toolbar icon when a new day's picks are waiting in the Library's Today.
+// A badge on the toolbar icon when a new day's picks are waiting in the Library's Highlights.
 async function updateBadge() {
   try {
     const data = await store.load();
