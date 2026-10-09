@@ -924,6 +924,33 @@ try {
     await saved.close();
   });
 
+  await check("LinkedIn's Saved posts page: works when LinkedIn keeps the last page in a hidden <main>", async () => {
+    const saved = await context.newPage();
+    await saved.setViewportSize({ width: 1100, height: 900 });
+    await saved.goto(SAVED);
+    const P1 = 'urn:li:activity:7340000000000000001';
+    const NEW = 'urn:li:activity:7340000000000000098';
+    await feedButton(saved, P1).waitFor();
+    // Like arriving from the feed inside LinkedIn: the old page stays, hidden, in its own <main>
+    // ahead of this one, with a copy of a post that's also in this list.
+    await saved.evaluate(id => {
+      const old = document.createElement('main');
+      old.style.display = 'none';
+      old.innerHTML = `<div data-urn="${id}"><p>Hidden copy in the old page</p></div>`;
+      document.body.prepend(old);
+    }, P1);
+    await saved.evaluate(id => {
+      const li = document.querySelector('.saved-list li').cloneNode(true);
+      li.querySelectorAll('[data-labels-ui]').forEach(n => n.remove());
+      li.querySelector('[data-chameleon-result-urn]').setAttribute('data-chameleon-result-urn', id);
+      document.querySelector('.saved-list ul').append(li);
+    }, NEW);
+    await feedButton(saved, NEW).waitFor({ timeout: 3000 });
+    await saved.waitForTimeout(600);
+    assert.ok(await feedButton(saved, P1).isVisible(), 'the visible copy keeps the button');
+    await saved.close();
+  });
+
   // ---------- keyboard shortcut ----------
   // Automation can't press a Chrome command shortcut, so these send the same message the
   // background worker sends when the shortcut is pressed.

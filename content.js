@@ -225,16 +225,26 @@
     else entry.button.removeAttribute('title');
   }
 
+  // LinkedIn is a single-page app and can keep the page you just left (often the feed) in a
+  // hidden <main> next to the one you're looking at, so every <main> gets scanned, and when a
+  // post shows up twice, the copy on screen gets the button.
+  const onScreen = el => el.getClientRects().length > 0;
+
   function scan() {
-    const root = document.querySelector('main') || document.body;
-    let posts;
+    const mains = [...document.querySelectorAll('main')];
+    let found;
     try {
-      posts = labelsFindPosts(root);
+      found = (mains.length ? mains : [document.body]).flatMap(root => labelsFindPosts(root));
     } catch (err) {
       console.warn('Labels: could not scan the page', err);
       return;
     }
-    for (const { id, container } of posts) {
+    const best = new Map();
+    for (const post of found) {
+      const current = best.get(post.id);
+      if (!current || (!onScreen(current.container) && onScreen(post.container))) best.set(post.id, post);
+    }
+    for (const { id, container } of best.values()) {
       const entry = buttons.get(id);
       if (entry && entry.host.isConnected && container.contains(entry.host)) continue;
       entry?.host.remove();
