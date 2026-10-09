@@ -894,6 +894,36 @@ try {
     await saved.close();
   });
 
+  await check("LinkedIn's Saved posts page: buttons appear without a refresh when IDs arrive late", async () => {
+    const saved = await context.newPage();
+    await saved.setViewportSize({ width: 1100, height: 900 });
+    await saved.goto(SAVED);
+    const P1 = 'urn:li:activity:7340000000000000001';
+    const LATE = 'urn:li:activity:7340000000000000099';
+    await feedButton(saved, P1).waitFor();
+    // Like moving here inside LinkedIn: a card arrives first, its post ID a moment later.
+    await saved.evaluate(() => {
+      const li = document.querySelector('.saved-list li').cloneNode(true);
+      li.querySelectorAll('[data-labels-ui]').forEach(n => n.remove());
+      const card = li.querySelector('[data-chameleon-result-urn]');
+      card.removeAttribute('data-chameleon-result-urn');
+      card.id = 'late-card';
+      li.querySelector('.entity-result__content-summary').firstChild.textContent = 'A post whose ID shows up late.';
+      document.querySelector('.saved-list ul').append(li);
+    });
+    await saved.waitForTimeout(800);
+    assert.equal(await feedButton(saved, LATE).count(), 0);
+    await saved.evaluate(
+      id => document.getElementById('late-card').setAttribute('data-chameleon-result-urn', id),
+      LATE,
+    );
+    await feedButton(saved, LATE).waitFor({ timeout: 3000 });
+    // LinkedIn re-rendering a card can wipe the button out; it comes back.
+    await saved.evaluate(id => document.querySelector(`[data-labels-post="${id}"]`).remove(), P1);
+    await feedButton(saved, P1).waitFor({ timeout: 3000 });
+    await saved.close();
+  });
+
   // ---------- keyboard shortcut ----------
   // Automation can't press a Chrome command shortcut, so these send the same message the
   // background worker sends when the shortcut is pressed.

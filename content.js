@@ -1066,11 +1066,41 @@
     if (area === 'local') refreshSaved();
   });
 
+  // Look again when LinkedIn changes the page. It's a single-page app: moving between pages
+  // swaps content in place, and some lists (like Saved posts) add a post's ID to its card a
+  // moment after the card itself, so new IDs and removed buttons count too, not just new nodes.
+  const ID_ATTRIBUTES = [
+    'href',
+    'data-urn',
+    'data-id',
+    'data-chameleon-result-urn',
+    'data-activity-urn',
+    'componentkey',
+  ];
+  const ours = n => n.nodeType === 1 && n.hasAttribute?.('data-labels-ui');
+  const lostButton = n =>
+    n.nodeType === 1 && (n.matches?.('[data-labels-ui="button"]') || n.querySelector?.('[data-labels-ui="button"]'));
   new MutationObserver(mutations => {
-    if (mutations.some(m => [...m.addedNodes].some(n => n.nodeType === 1 && !n.hasAttribute?.('data-labels-ui')))) {
-      scheduleScan();
-    }
-  }).observe(document.documentElement, { childList: true, subtree: true });
+    const changed = mutations.some(m =>
+      m.type === 'attributes'
+        ? !m.target.closest?.('[data-labels-ui]')
+        : [...m.addedNodes].some(n => n.nodeType === 1 && !ours(n)) || [...m.removedNodes].some(lostButton),
+    );
+    if (changed) scheduleScan();
+  }).observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ID_ATTRIBUTES,
+  });
+
+  // After moving to another LinkedIn page, check a few more times while it finishes loading.
+  let lastUrl = location.href;
+  setInterval(() => {
+    if (location.href === lastUrl) return;
+    lastUrl = location.href;
+    for (const ms of [300, 1000, 2500, 5000]) setTimeout(scan, ms);
+  }, 500);
 
   refreshSaved().finally(scan);
 })();
