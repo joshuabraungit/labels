@@ -336,6 +336,11 @@ test('author and image: saved, refreshed, searchable, kept in backups', async ()
   assert.equal(imported.posts[A].image, 'https://media.licdn.com/p.jpg');
 });
 
+test('cleanMeta fixes names saved from avatar status text', () => {
+  assert.deepEqual(cleanMeta({ name: 'Status is offline', headline: 'Max Toone' }), { author: { name: 'Max Toone' } });
+  assert.deepEqual(cleanMeta({ name: 'Status is reachable' }), {});
+});
+
 test('cleanMeta drops unsafe or empty values', () => {
   assert.deepEqual(cleanMeta({ name: '', image: '' }), {});
   assert.deepEqual(cleanMeta({ name: 'X', avatar: 'javascript:alert(1)', image: 'http://insecure/p.jpg' }), {
