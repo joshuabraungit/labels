@@ -95,7 +95,6 @@
     .loading { color: #6b6a75; padding: 12px 0; }
   `;
 
-  const FALLBACK_PREVIEW = 'Open saved post';
   const buttons = new Map(); // post id -> { host, button, container }
   let savedIds = new Set();
   let savedNames = {}; // post ID -> its label names, shown on the button
@@ -154,18 +153,6 @@
     return null;
   }
 
-  // The post's own "•••" menu (outside comments), or null.
-  function overflowMenu(container) {
-    const menu = [
-      ...container.querySelectorAll(
-        '.entity-result__actions-overflow-menu-dropdown, [class*="actions-overflow-menu"], [class*="control-menu"]',
-      ),
-    ].find(el => !el.closest(LABELS_COMMENTS) && !el.closest('[data-labels-ui]'));
-    if (!menu) return null;
-    // Insert next to the menu's wrapper, so the button joins the same row.
-    return menu.parentElement && menu.parentElement !== container ? menu.parentElement : menu;
-  }
-
   function addButton(id, container) {
     const host = h('div', { 'data-labels-ui': 'button', 'data-labels-post': id });
     Object.assign(host.style, { display: 'flex', justifyContent: 'flex-end', padding: '4px 12px 8px' });
@@ -184,14 +171,10 @@
     });
     root.append(button);
     const bar = actionBar(container);
-    const menu = bar ? null : overflowMenu(container);
+    // Lists without a reactions bar (like LinkedIn's Saved posts page): the bottom right of
+    // the post's card. (Squeezing it next to the ••• menu got it hidden on the real page.)
     if (bar) bar.after(host);
-    else if (menu) {
-      // Lists without a reactions bar (e.g. LinkedIn's Saved posts page): sit in the
-      // post's top row, just left of its ••• menu.
-      Object.assign(host.style, { padding: '0 8px 0 8px', marginLeft: 'auto', alignItems: 'flex-start' });
-      menu.before(host);
-    } else container.prepend(host);
+    else container.append(host);
     buttons.set(id, { host, button, container });
     paintButton(id);
   }

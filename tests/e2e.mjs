@@ -782,7 +782,7 @@ try {
     await sdui.close();
   });
 
-  await check("LinkedIn's Saved posts page: button sits in each post's top row", async () => {
+  await check("LinkedIn's Saved posts page: a visible button at the bottom of each post's card", async () => {
     const saved = await context.newPage();
     await saved.setViewportSize({ width: 1100, height: 900 });
     await saved.goto(SAVED);
@@ -791,13 +791,15 @@ try {
     await feedButton(saved, P2).waitFor();
     for (const id of [P1, P2]) {
       const where = await saved.locator(`[data-labels-post="${id}"]`).evaluate(host => ({
-        row: host.parentElement.className,
-        next: host.nextElementSibling?.querySelector('.entity-result__actions-overflow-menu-dropdown') !== null,
-        inItem: host.closest('[data-chameleon-result-urn]')?.getAttribute('data-chameleon-result-urn'),
+        last: host === host.parentElement.lastElementChild,
+        inItem: host
+          .closest('li')
+          ?.querySelector('[data-chameleon-result-urn]')
+          ?.getAttribute('data-chameleon-result-urn'),
       }));
-      assert.equal(where.row, 'display-flex mb3 ml4', 'in the top row');
-      assert.equal(where.next, true, 'right before the ••• menu');
+      assert.equal(where.last, true, 'at the end of the card');
       assert.equal(where.inItem, id, "inside that post's own card");
+      assert.ok(await feedButton(saved, id).isVisible());
     }
     await feedButton(saved, P1).click();
     assert.equal(
