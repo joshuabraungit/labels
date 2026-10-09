@@ -768,3 +768,11 @@ kbd {
   max-width: 1400px;
   margin: 24px auto 0;
 }
+
+/* Search matches */
+mark {
+  padding: 0 1px;
+  border-radius: 3px;
+  background: #ffe066;
+  color: inherit;
+}

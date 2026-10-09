@@ -415,6 +415,48 @@ try {
     await p.close();
   });
 
+  await check('search highlights matches, and opens a card when the match is below the fold', async () => {
+    const p = await openLibrary(context, extId);
+    const before = await storedData(p);
+    const id = 'urn:li:activity:7620000000000000001';
+    const lines = Array.from({ length: 10 }, (_, i) => `Line ${i + 1} about outbound.`);
+    lines[8] = 'Line 9: the best Subject line is short.';
+    const data = {
+      version: 1,
+      labels: { l1: { id: 'l1', name: 'Cold email', createdAt: 1 } },
+      posts: {
+        [id]: {
+          id,
+          url: `https://www.linkedin.com/feed/update/${id}/`,
+          excerpt: lines[0],
+          text: lines.join('\n'),
+          labelIds: ['l1'],
+          savedAt: Date.now(),
+          updatedAt: Date.now(),
+          author: { name: 'Sam Subjectson', headline: 'Writes about email' },
+        },
+      },
+    };
+    await p.evaluate(d => chrome.storage.local.set({ 'labels.data.v1': d }), data);
+    const c = card(p, id);
+    await c.waitFor();
+    const search = p.getByRole('searchbox', { name: 'Search posts' });
+    assert.equal(await c.locator('.text.clamped').count(), 1, 'collapsed before searching');
+    await search.fill('subject');
+    assert.deepEqual(await c.locator('mark').allTextContents(), ['Subject', 'Subject'], 'name and text');
+    assert.equal(await c.locator('.text.clamped').count(), 0, 'opened to show the match');
+    await c.getByRole('button', { name: 'Collapse' }).click();
+    assert.equal(await c.locator('.text.clamped').count(), 1, 'Collapse still works');
+    await search.fill('cold');
+    assert.equal(await c.locator('.chip mark').textContent(), 'Cold', 'label chips too');
+    await search.fill('line 1 about');
+    assert.equal(await c.locator('.text.clamped').count(), 1, 'stays collapsed when the match is visible');
+    await search.press('Escape');
+    assert.equal(await c.locator('mark').count(), 0);
+    await p.evaluate(d => chrome.storage.local.set({ 'labels.data.v1': d }), before);
+    await p.close();
+  });
+
   await check('long posts expand and collapse', async () => {
     const p = await openLibrary(context, extId);
     const text = (await storedData(p)).posts[ID_A].text;

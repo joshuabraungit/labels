@@ -25,6 +25,7 @@ const state = {
   filter: { kind: 'all' },
   query: '',
   expanded: new Set(), // post IDs showing their whole text
+  collapsed: new Set(), // post IDs collapsed by hand during a search (otherwise a hidden match opens the card)
   editing: null, // post ID whose "Edit labels" popover is open
   editQuery: '',
   newLabel: null, // { value, error } while adding a label in the sidebar
@@ -131,6 +132,28 @@ function initials(name) {
 }
 
 // A profile photo, or the person's initials if there isn't one (or it no longer loads).
+// ---------- search highlights ----------
+
+function searchWords() {
+  return state.query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
+}
+
+// The text with every search word wrapped in <mark>.
+function highlight(text, words = searchWords()) {
+  if (!words.length || !text) return text;
+  const escaped = [...words].sort((a, b) => b.length - a.length).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = new RegExp(`(${escaped.join('|')})`, 'gi');
+  return text.split(re).map((part, i) => (i % 2 ? h('mark', null, part) : part));
+}
+
+// Whether the first match in a long post sits below its collapsed preview (about 4 lines).
+function matchIsHidden(text, words = searchWords()) {
+  const lower = text.toLocaleLowerCase();
+  const at = Math.min(...words.map(w => lower.indexOf(w)).filter(i => i >= 0));
+  if (!Number.isFinite(at)) return false;
+  return at > 180 || text.slice(0, at).split('\n').length > 4;
+}
+
 function avatar(url, name, cls) {
   const fallback = () => h('span', { class: `${cls} initials`, 'aria-hidden': 'true' }, initials(name));
   if (!url) return fallback();
@@ -450,9 +473,12 @@ function renderEditPopover(post) {
 }
 
 function renderCard(post) {
-  const expanded = state.expanded.has(post.id);
   const body = post.text || post.excerpt;
   const long = body.length > 200 || body.split('\n').length > 4;
+  // While searching, a long post opens up when its match would be hidden below the fold.
+  const expanded =
+    state.expanded.has(post.id) ||
+    (long && searchWords().length > 0 && !state.collapsed.has(post.id) && matchIsHidden(body));
   const labels = post.labelIds
     .map(id => state.data.labels[id])
     .filter(Boolean)
@@ -474,14 +500,15 @@ function renderCard(post) {
         h(
           'div',
           { class: 'who' },
-          h('div', { class: 'name' }, name),
-          post.author?.headline && h('div', { class: 'headline', title: post.author.headline }, post.author.headline),
+          h('div', { class: 'name' }, highlight(name)),
+          post.author?.headline &&
+            h('div', { class: 'headline', title: post.author.headline }, highlight(post.author.headline)),
           h('div', { class: 'when' }, state.filter.kind === 'today' ? fromAgo(post.savedAt) : savedAgo(post.savedAt)),
         ),
       ),
       image,
       body
-        ? h('p', { class: `text${long && !expanded ? ' clamped' : ''}` }, body)
+        ? h('p', { class: `text${long && !expanded ? ' clamped' : ''}` }, highlight(body))
         : h('p', { class: 'text fallback' }, 'No text was saved for this post. Open it to see it on LinkedIn.'),
       isPartial(post) &&
         body &&
@@ -493,7 +520,9 @@ function renderCard(post) {
       h(
         'div',
         { class: 'chips' },
-        labels.map(l => h('button', { class: 'chip', onClick: () => setFilter({ kind: 'label', id: l.id }) }, l.name)),
+        labels.map(l =>
+          h('button', { class: 'chip', onClick: () => setFilter({ kind: 'label', id: l.id }) }, highlight(l.name)),
+        ),
       ),
     ),
     h(
@@ -506,8 +535,13 @@ function renderCard(post) {
           {
             class: 'action',
             onClick: () => {
-              if (expanded) state.expanded.delete(post.id);
-              else state.expanded.add(post.id);
+              if (expanded) {
+                state.expanded.delete(post.id);
+                if (searchWords().length) state.collapsed.add(post.id);
+              } else {
+                state.expanded.add(post.id);
+                state.collapsed.delete(post.id);
+              }
               render();
             },
           },
@@ -635,6 +669,7 @@ function renderMain() {
           'data-focus': 'search',
           onInput: e => {
             state.query = e.target.value;
+            state.collapsed.clear();
             render();
           },
           onKeydown: e => e.key === 'Escape' && ((state.query = ''), render()),
