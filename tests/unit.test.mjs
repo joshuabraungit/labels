@@ -12,6 +12,9 @@ import {
   pinnedCount,
   cleanMeta,
   toSortLabelId,
+  dayKey,
+  todayIsNew,
+  todayPosts,
   postsAsMarkdown,
   searchPosts,
   STORAGE_KEY,
@@ -366,6 +369,51 @@ test('"To sort": bring posts in, drop it once a post gets real labels, then it g
   const { data: after } = await store.setPostLabels(A, [sortId, ideas.id]);
   assert.deepEqual(after.posts[A].labelIds, [ideas.id]);
   assert.equal(toSortLabelId(after), null);
+});
+
+test('Today: 5 older posts a day, no repeats for 30 days, never To sort or brand-new saves', async () => {
+  const DAY = 86400000;
+  const now = new Date(2026, 9, 9, 9).getTime();
+  const area = memoryArea();
+  const store = createStore(area);
+  const { result: l } = await store.createLabel('Ideas');
+  const url = id => `https://www.linkedin.com/feed/update/${id}/`;
+  const ids = Array.from({ length: 12 }, (_, i) => `urn:li:activity:73000000000000000${String(i + 10)}`);
+  for (const id of ids) await store.savePost({ id, url: url(id), excerpt: id, labelIds: [l.id] });
+  const fresh = 'urn:li:activity:7399999999999999999';
+  await store.savePost({ id: fresh, url: url(fresh), excerpt: 'new', labelIds: [l.id] });
+  const sortMe = 'urn:li:activity:7388888888888888888';
+  await store.addToSort([{ id: sortMe, url: url(sortMe), excerpt: 'sort me' }]);
+  // Everything was saved 40 days ago except one post saved today.
+  for (const p of Object.values(area.mem[STORAGE_KEY].posts)) p.savedAt = p.id === fresh ? now : now - 40 * DAY;
+
+  let data = await store.load();
+  assert.equal(todayIsNew(data, now), true, 'a new day is waiting');
+  ({ data } = await store.ensureToday(now));
+  const first = todayPosts(data, now).map(p => p.id);
+  assert.equal(first.length, 5);
+  assert.ok(!first.includes(fresh), 'not a post saved today');
+  assert.ok(!first.includes(sortMe), 'not To sort');
+  // Same day: same picks. Seeing them clears the badge.
+  ({ data } = await store.ensureToday(now + 3600000));
+  assert.deepEqual(
+    todayPosts(data, now).map(p => p.id),
+    first,
+  );
+  ({ data } = await store.seenToday());
+  assert.equal(todayIsNew(data, now), false);
+  // "Show 5 more" adds different posts.
+  let added;
+  ({ data, result: added } = await store.moreToday(now));
+  assert.equal(added, 5);
+  const shown = todayPosts(data, now).map(p => p.id);
+  assert.equal(new Set(shown).size, 10);
+  // Next day: only the 2 never shown are left (30-day rule), no repeats.
+  ({ data } = await store.ensureToday(now + DAY));
+  const next = todayPosts(data, now + DAY).map(p => p.id);
+  assert.equal(next.length, 2);
+  assert.ok(next.every(id => !shown.includes(id)));
+  assert.equal(dayKey(now), '2026-10-09');
 });
 
 test('backup round trip merges without duplicates', async () => {

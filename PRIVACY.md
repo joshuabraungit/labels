@@ -15,6 +15,7 @@ When you save a post, Labels stores the following in your browser's local extens
 - The post author's name, LinkedIn headline and the link to their profile photo, and the link to the post's main image
 - The labels you created and which posts you assigned them to
 - The date and time you saved each post
+- Which posts were shown in the Library's Today section and when, so they aren't repeated too soon
 
 That's all. Labels does not store or read comments, other posts, your LinkedIn account details, messages, contacts, browsing history or cookies. It stores links to the author's photo and the post's image, not the images themselves.
 

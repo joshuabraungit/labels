@@ -891,3 +891,36 @@ kbd {
   margin: 0 0 20px;
   color: var(--muted);
 }
+
+/* Today */
+.nav-item.today svg {
+  width: 18px;
+  height: 18px;
+  color: #f08c00;
+}
+
+.nav-item.today.active svg {
+  color: #fff;
+}
+
+.today-head {
+  max-width: 1400px;
+  margin: 0 auto 16px;
+}
+
+.today-head h1 {
+  margin: 0 0 2px;
+  font-size: 22px;
+}
+
+.today-head p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.today-more {
+  display: flex;
+  justify-content: center;
+  max-width: 1400px;
+  margin: 24px auto 0;
+}

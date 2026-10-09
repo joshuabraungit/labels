@@ -9,13 +9,15 @@ It has two parts:
    - **Left:** All Posts, your labels (with counts, **+** to add, ⋯ to rename or delete), the people you've saved posts from, and Export / Import.
    - **Right:** a search box and every saved post as a card: the author's photo, name and headline, when you saved it, the post's image, its text (**Expand** for long posts) and its labels. Each card has **Open** (on LinkedIn), **Edit labels** and delete.
 
+**Today:** every day the Library picks 5 posts from your saves for a **Today** section at the top of the sidebar, so good posts come back around instead of getting buried. Posts you haven't seen in a while come first, nothing repeats within 30 days, and posts saved in the last few days or still in To sort are left out. The picks stay the same all day and change at midnight; **Show 5 more** adds a few extra. When a new day's picks are ready, the Labels icon shows a small number, and the Library opens on Today.
+
 **Posts you saved with LinkedIn's own Save button:** open LinkedIn's Saved posts page (`linkedin.com/my-items/saved-posts/`) and scroll down until everything you want has loaded. A bar at the bottom says **Add N posts to Labels**; one click brings them all in under **To sort**, with their text, author and image. Then click **Sort N posts** (or **Start sorting** in the Library) to go through them one at a time: number keys **1–9** tick labels, **/** finds or creates one, **Enter** saves and moves on, **S** skips, **Delete** removes. A post leaves To sort as soon as it has a real label, and To sort disappears when it's empty. LinkedIn's own Saved list isn't changed.
 
 Every saved post has at least one label. Deleting a label warns you first and says how many posts go with it (posts with other labels keep them).
 
 ## Install (unpacked)
 
-1. Download `release/labels-extension-3.2.1.zip` and unzip it. You should get a folder with `manifest.json` at the top.
+1. Download `release/labels-extension-3.3.0.zip` and unzip it. You should get a folder with `manifest.json` at the top.
 2. In Chrome, go to `chrome://extensions` and turn on **Developer mode** (top right).
 3. Click **Load unpacked** and pick the unzipped folder.
 4. Click the puzzle icon in the toolbar and pin **Labels** so the Library is one click away.

@@ -1,7 +1,17 @@
 // Handles storage for the Label buttons and picker (content.js), so labels and saved posts
 // are read and written by the same code the Library uses. Also opens the Library.
 import { classifyUrl, makeExcerpt } from './lib/post.js';
-import { createStore, LabelsError, labelsWithCounts } from './lib/store.js';
+import {
+  createStore,
+  dayKey,
+  LabelsError,
+  labelsWithCounts,
+  STORAGE_KEY,
+  TODAY_COUNT,
+  todayCandidates,
+  todayIsNew,
+  todayPosts,
+} from './lib/store.js';
 
 const store = createStore(chrome.storage.local);
 
@@ -81,6 +91,7 @@ const handlers = {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handler = message?.type && handlers[message.type];
   if (!handler || sender.id !== chrome.runtime.id) return false;
+  updateBadge(); // a new day may have started since the last check
   handler(message, sender)
     .then(result => sendResponse({ ok: true, result }))
     .catch(err => {
@@ -113,6 +124,27 @@ async function openLibrary(hash = '') {
 }
 
 chrome.action.onClicked.addListener(() => openLibrary());
+
+// A badge on the toolbar icon when a new day's picks are waiting in the Library's Today.
+async function updateBadge() {
+  try {
+    const data = await store.load();
+    await chrome.action.setBadgeBackgroundColor({ color: '#6d4fc2' });
+    let count = 0;
+    if (todayIsNew(data)) {
+      count =
+        data.today?.date === dayKey() ? todayPosts(data).length : Math.min(TODAY_COUNT, todayCandidates(data).length);
+    }
+    await chrome.action.setBadgeText({ text: count ? String(count) : '' });
+  } catch (err) {
+    console.warn('Labels: could not update the badge', err);
+  }
+}
+chrome.runtime.onStartup.addListener(updateBadge);
+chrome.runtime.onInstalled.addListener(updateBadge);
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes[STORAGE_KEY]) updateBadge();
+});
 
 // Keyboard shortcut (Alt+Shift+L by default, changeable at chrome://extensions/shortcuts).
 // On LinkedIn it opens the label picker for the post being looked at; elsewhere it opens

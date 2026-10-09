@@ -983,6 +983,65 @@ try {
     await p.close();
   });
 
+  await check('Today: older posts resurface, with a badge, Show 5 more, and the same picks all day', async () => {
+    const p = await openLibrary(context, extId);
+    const DAY = 86400000;
+    const now = Date.now();
+    const data = { version: 1, labels: { l1: { id: 'l1', name: 'Ideas', createdAt: 1 } }, posts: {} };
+    for (let i = 0; i < 8; i++) {
+      const id = `urn:li:activity:76100000000000000${10 + i}`;
+      data.posts[id] = {
+        id,
+        url: `https://www.linkedin.com/feed/update/${id}/`,
+        excerpt: `Older post ${i}`,
+        labelIds: ['l1'],
+        savedAt: now - (40 + i) * DAY,
+        updatedAt: now,
+      };
+    }
+    // One saved today: too new to resurface.
+    data.posts['urn:li:activity:7619999999999999999'] = {
+      ...data.posts['urn:li:activity:7610000000000000010'],
+      id: 'urn:li:activity:7619999999999999999',
+      url: 'https://www.linkedin.com/feed/update/urn:li:activity:7619999999999999999/',
+      excerpt: 'Saved today',
+      savedAt: now,
+    };
+    await p.evaluate(
+      d => chrome.storage.local.clear().then(() => chrome.storage.local.set({ 'labels.data.v1': d })),
+      data,
+    );
+    await p.waitForFunction(async () => (await chrome.action.getBadgeText({})) === '5');
+
+    // Opening the Library on a new day shows Today first, and clears the badge.
+    await p.reload();
+    await p.locator('body[data-ready]').waitFor();
+    assert.equal(await p.locator('.nav-item.active .name').textContent(), 'Today');
+    assert.equal(await p.locator('.card').count(), 5);
+    assert.match(await p.locator('.card .when').first().textContent(), /^From \d+ (weeks|months) ago$/);
+    assert.ok(!(await p.locator('.card .text').allTextContents()).includes('Saved today'));
+    await p.waitForFunction(async () => (await chrome.action.getBadgeText({})) === '');
+    const picked = await p.locator('.card').evaluateAll(cards => cards.map(c => c.dataset.post));
+    await shot(p, '8-today');
+
+    // Show 5 more: only 3 older posts are left.
+    await p.getByRole('button', { name: 'Show 3 more' }).click();
+    assert.equal(await p.locator('.card').count(), 8);
+    await p.getByText('That’s everything for now. More tomorrow.').waitFor();
+
+    // Same picks after reopening; All Posts still has everything.
+    await p.reload();
+    await p.locator('body[data-ready]').waitFor();
+    await navTo(p, 'Today');
+    assert.deepEqual(
+      (await p.locator('.card').evaluateAll(cards => cards.map(c => c.dataset.post))).slice(0, 5),
+      picked,
+    );
+    await navTo(p, 'All Posts');
+    assert.equal(await p.locator('.total').textContent(), '9 posts');
+    await p.close();
+  });
+
   console.log(`\nAll ${step} end-to-end checks passed.`);
 } finally {
   await context.close();

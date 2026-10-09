@@ -10,6 +10,9 @@ import {
   searchPosts,
   sortedLabels,
   STORAGE_KEY,
+  TODAY_COUNT,
+  todayCandidates,
+  todayPosts,
   toSortLabelId,
 } from './lib/store.js';
 
@@ -19,7 +22,8 @@ const importInput = document.getElementById('import-file');
 
 const state = {
   data: emptyData(),
-  filter: { kind: 'all' }, // { kind: 'all' } | { kind: 'label', id } | { kind: 'person', name }
+  // { kind: 'today' } | { kind: 'all' } | { kind: 'label', id } | { kind: 'person', name }
+  filter: { kind: 'all' },
   query: '',
   expanded: new Set(), // post IDs showing their whole text
   editing: null, // post ID whose "Edit labels" popover is open
@@ -79,6 +83,17 @@ const ICONS = {
   tag: ['M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z', 'M7.5 7.5h.01'],
   trash: ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 13h10l1-13', 'M9 7V4h6v3'],
   download: ['M12 4v12', 'M7 11l5 5 5-5', 'M5 20h14'],
+  sun: [
+    'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+    'M12 2v2',
+    'M12 20v2',
+    'M4.9 4.9l1.4 1.4',
+    'M17.7 17.7l1.4 1.4',
+    'M2 12h2',
+    'M20 12h2',
+    'M4.9 19.1l1.4-1.4',
+    'M17.7 6.3l1.4-1.4',
+  ],
   upload: ['M12 20V8', 'M7 13l5-5 5 5', 'M5 4h14'],
 };
 
@@ -88,6 +103,14 @@ function errorMessage(err) {
   if (err instanceof LabelsError) return err.message;
   console.error(err);
   return 'Something went wrong. Please try again.';
+}
+
+// Today's cards: "From 4 months ago".
+function fromAgo(ms) {
+  const days = Math.round((Date.now() - ms) / 86400000);
+  if (days >= 60) return `From ${Math.round(days / 30)} months ago`;
+  if (days >= 14) return `From ${Math.round(days / 7)} weeks ago`;
+  return `From ${days} day${days === 1 ? '' : 's'} ago`;
 }
 
 function savedAgo(ms) {
@@ -160,8 +183,13 @@ function people() {
 
 function visiblePosts() {
   const q = state.query.trim();
-  let posts = q ? searchPosts(state.data, q) : Object.values(state.data.posts);
   const f = state.filter;
+  if (f.kind === 'today') {
+    // In the order they were picked; search narrows them down.
+    const matches = q ? new Set(searchPosts(state.data, q).map(p => p.id)) : null;
+    return todayPosts(state.data).filter(p => !matches || matches.has(p.id));
+  }
+  let posts = q ? searchPosts(state.data, q) : Object.values(state.data.posts);
   if (f.kind === 'label') posts = posts.filter(p => p.labelIds.includes(f.id));
   if (f.kind === 'person') posts = posts.filter(p => p.author?.name === f.name);
   return posts.sort((a, b) => b.savedAt - a.savedAt);
@@ -304,6 +332,14 @@ function renderSidebar() {
         'Import',
       ),
     ),
+    navItem({
+      label: 'Today',
+      count: todayPosts(state.data).length,
+      active: state.filter.kind === 'today',
+      cls: 'today',
+      lead: icon(ICONS.sun),
+      onClick: () => setFilter({ kind: 'today' }),
+    }),
     navItem({
       label: 'All Posts',
       count: total,
@@ -457,7 +493,7 @@ function renderCard(post) {
           { class: 'who' },
           h('div', { class: 'name' }, name),
           post.author?.headline && h('div', { class: 'headline', title: post.author.headline }, post.author.headline),
-          h('div', { class: 'when' }, savedAgo(post.savedAt)),
+          h('div', { class: 'when' }, state.filter.kind === 'today' ? fromAgo(post.savedAt) : savedAgo(post.savedAt)),
         ),
       ),
       image,
@@ -530,6 +566,61 @@ function renderCard(post) {
     ),
   );
 }
+
+// ---------- Today ----------
+
+function renderTodayHeader(count) {
+  if (!count) return null;
+  return h(
+    'div',
+    { class: 'today-head' },
+    h('h1', null, 'Today'),
+    h('p', null, `${plural(count, 'post')} from your library, picked for today. New ones tomorrow.`),
+  );
+}
+
+function renderTodayMore() {
+  if (!todayPosts(state.data).length) return null;
+  const left = todayCandidates(state.data, Date.now(), state.data.today?.ids ?? []).length;
+  const more = async () => {
+    try {
+      const { data, result } = await store.moreToday();
+      state.data = data;
+      if (!result) showToast('That\u2019s everything for now.');
+    } catch (err) {
+      showToast(errorMessage(err));
+    }
+    render();
+  };
+  return h(
+    'div',
+    { class: 'today-more' },
+    left
+      ? h('button', { class: 'btn', onClick: more }, `Show ${Math.min(TODAY_COUNT, left)} more`)
+      : h('p', { class: 'hint' }, 'That\u2019s everything for now. More tomorrow.'),
+  );
+}
+
+// A new day's picks (and the badge on the toolbar icon) when the Library opens or comes back.
+async function refreshToday() {
+  try {
+    const { data } = await store.ensureToday();
+    state.data = data;
+    if (data.today?.fresh && todayPosts(data).length) {
+      state.filter = { kind: 'today' };
+      render();
+      const { data: seen } = await store.seenToday();
+      state.data = seen;
+    }
+  } catch (err) {
+    console.warn('Labels: could not pick today\u2019s posts', err);
+  }
+  render();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !state.sort) refreshToday();
+});
 
 // ---------- sort mode ----------
 
@@ -819,8 +910,11 @@ function renderMain() {
   if (state.sort) return renderSorter();
   const posts = visiblePosts();
   const total = Object.keys(state.data.posts).length;
+  const today = state.filter.kind === 'today';
   let empty = null;
   if (!total) empty = 'Nothing saved yet. Click Label under any post on LinkedIn and it shows up here.';
+  else if (today && !posts.length && !state.query.trim())
+    empty = 'Nothing to resurface yet. Posts show up here a few days after you save them.';
   else if (!posts.length)
     empty = state.query.trim() ? `No saved posts match “${state.query.trim()}”.` : 'No posts here yet.';
   return h(
@@ -849,8 +943,10 @@ function renderMain() {
       ),
       h('span', { class: 'total', role: 'status' }, plural(posts.length, 'post')),
     ),
-    renderSortBanner(),
+    today && renderTodayHeader(posts.length),
+    !today && renderSortBanner(),
     empty ? h('p', { class: 'empty' }, empty) : h('div', { class: 'list' }, posts.map(renderCard)),
+    today && !state.query.trim() && renderTodayMore(),
   );
 }
 
@@ -1041,6 +1137,7 @@ async function init() {
   state.data = await store.load();
   render();
   if (location.hash === '#sort') startSorting();
+  else await refreshToday();
   document.body.dataset.ready = 'true';
 }
 
