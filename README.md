@@ -4,7 +4,7 @@ A Chrome extension (Manifest V3) for saving LinkedIn posts with your own labels 
 
 It has two parts:
 
-1. **On LinkedIn, the Label button.** Every post gets a purple **Label** button. Click it, type to find or create a label, tick, **Save**. The button then shows the post's labels (for example **Cold email** or **Cold email +2**). Keyboard: **Alt+Shift+L** (⌥⇧L on Mac) opens it for the post under your mouse.
+1. **On LinkedIn, the Label button.** Every post gets a purple **Label** button. Click it, type to find or create a label, tick, **Save**. The button then shows the post's labels (for example **Cold email** or **Cold email +2**). Hover a label in the list and click **⋯** to rename or delete it. Keyboard: **Alt+Shift+L** (⌥⇧L on Mac) opens it for the post under your mouse.
 2. **Your Library.** Click the Labels icon in Chrome's toolbar (or **Library** in the picker). It opens in a tab:
    - **Left:** Highlights, All Posts, your labels (with counts, **+** to add, ⋯ to rename or delete), the people you've saved posts from, and Export / Import.
    - **Right:** a search box and every saved post as a card: the author's photo, name and headline, when you saved it, the post's image, its text (**Expand** for long posts) and its labels. Each card has **Open** (on LinkedIn), **Edit labels** and delete.

@@ -6,6 +6,7 @@ import {
   dayKey,
   LabelsError,
   labelsWithCounts,
+  postsOnlyIn,
   STORAGE_KEY,
   TODAY_COUNT,
   todayCandidates,
@@ -21,6 +22,7 @@ function view(data, postId) {
       id: l.id,
       name: l.name,
       count: l.count,
+      only: postsOnlyIn(data, l.id), // posts deleting this label would delete too
     })),
     post: postId ? (data.posts[postId] ?? null) : null,
     savedIds: Object.keys(data.posts),
@@ -57,6 +59,17 @@ const handlers = {
   async createLabel({ name, postId }) {
     const { data, result } = await store.createLabel(name);
     return { ...view(data, postId), created: result };
+  },
+
+  // Rename and Delete from the picker's ⋯ menu.
+  async renameLabel({ labelId, name, postId }) {
+    const { data } = await store.renameLabel(labelId, name);
+    return view(data, postId);
+  },
+
+  async deleteLabel({ labelId, postId }) {
+    const { data } = await store.deleteLabel(labelId);
+    return view(data, postId);
   },
 
   async savePost({ postId, text, labelIds, meta }) {

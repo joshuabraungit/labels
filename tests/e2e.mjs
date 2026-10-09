@@ -675,6 +675,47 @@ try {
     await panel(feed).waitFor({ state: 'detached' });
   });
 
+  await check('feed: rename and delete a label from the picker', async () => {
+    await feedButton(feed, ID1).click();
+    const query = panel(feed).getByLabel('Find or create a label');
+    await query.fill('Picker temp');
+    await query.press('Enter');
+    const row = name => panel(feed).locator('.list li', { hasText: name });
+    await row('Picker temp').hover();
+    await panel(feed).getByRole('button', { name: 'Options for Picker temp' }).click();
+    await panel(feed).getByRole('button', { name: 'Rename', exact: true }).click();
+    // Esc backs out of renaming without closing the picker.
+    await feed.keyboard.press('Escape');
+    assert.equal(await panel(feed).getByLabel('Rename Picker temp').count(), 0);
+    assert.equal(await panel(feed).count(), 1, 'picker still open');
+    await panel(feed).getByRole('button', { name: 'Options for Picker temp' }).click();
+    await panel(feed).getByRole('button', { name: 'Rename', exact: true }).click();
+    await panel(feed).getByLabel('Rename Picker temp').fill('Picker renamed');
+    await panel(feed).getByLabel('Rename Picker temp').press('Enter');
+    await row('Picker renamed').waitFor();
+    assert.equal(await row('Picker renamed').locator('input[type=checkbox]').isChecked(), true, 'still ticked');
+    const labelNames = async () => {
+      const lib = await openLibrary(context, extId);
+      const names = Object.values((await storedData(lib)).labels).map(l => l.name);
+      await lib.close();
+      await feed.bringToFront();
+      return names;
+    };
+    assert.ok((await labelNames()).includes('Picker renamed'));
+
+    await panel(feed).getByRole('button', { name: 'Options for Picker renamed' }).click();
+    await panel(feed).getByRole('button', { name: 'Delete', exact: true }).click();
+    const warn = panel(feed).locator('.warn');
+    assert.equal(await warn.locator('.title').textContent(), 'Deleting the Picker renamed label cannot be undone.');
+    await shot(feed, 'picker-delete-label');
+    await warn.getByRole('button', { name: 'Permanently delete it' }).click();
+    await warn.waitFor({ state: 'detached' });
+    assert.equal(await row('Picker renamed').count(), 0);
+    assert.ok(!(await labelNames()).includes('Picker renamed'));
+    await feed.keyboard.press('Escape');
+    await panel(feed).waitFor({ state: 'detached' });
+  });
+
   await check('feed: post found only by its timestamp link; saving needs a label; no duplicates', async () => {
     await feedButton(feed, ID2).click();
     assert.equal(

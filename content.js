@@ -80,6 +80,25 @@
     kbd { display: inline-block; padding: 0 5px; border: 1px solid #dedde4; border-bottom-width: 2px; border-radius: 4px;
       background: #f7f7f9; font: inherit; font-size: 11px; font-weight: 600; color: #55545e; }
     .list li.active { background: #f2eefb; box-shadow: inset 3px 0 0 #6d4fc2; }
+    .row-actions { display: flex; align-items: center; gap: 2px; padding-right: 8px; flex: none; }
+    .more { opacity: 0; border: 0; background: transparent; color: #6b6a75; font-size: 16px; line-height: 1;
+      padding: 4px 8px; border-radius: 6px; }
+    .more:hover { background: #ececf0; color: #1c1b22; }
+    .list li:hover .more, .list li.active .more, .more:focus-visible { opacity: 1; }
+    .mini { border: 0; background: transparent; color: #5c40ab; font-size: 13px; font-weight: 600; padding: 4px 8px;
+      border-radius: 6px; }
+    .mini:hover { background: #f2eefb; }
+    .mini.danger { color: #b4262c; }
+    .mini.danger:hover { background: #fdf0f0; }
+    .rename { flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 6px 12px 6px 16px; }
+    .rename input { width: 100%; box-sizing: border-box; }
+    .rename .error { margin: 0; }
+    .warn { margin: 8px 0 4px; padding: 18px 16px 16px; border-radius: 14px; text-align: center;
+      background: linear-gradient(120deg, #fff4cc 0%, #ffe9d2 55%, #ffe1d8 100%); }
+    .warn p { margin: 0 0 6px; }
+    .warn .title { font-weight: 700; font-size: 15px; }
+    .warn .actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .warn .btn { border: 0; border-radius: 999px; font-weight: 600; }
     .create-btn { flex: 1; display: flex; align-items: center; gap: 10px; padding: 9px 16px; border: 0; background: transparent;
       color: #5c40ab; font-size: 14px; font-weight: 500; text-align: left; }
     .create-btn .plus { width: 16px; text-align: center; font-weight: 700; }
@@ -303,6 +322,9 @@
       error: '',
       status: '',
       saving: false,
+      menu: null, // label ID whose ⋯ (Rename, Delete) is open
+      renaming: null, // { id, value, error }
+      deleting: null, // { id, error } while the delete warning shows
     };
     // Read the whole post in the background; saving waits for it.
     const p = panel;
@@ -560,6 +582,8 @@
     const p = panel;
     const existing = p.post;
     const options = labelOptions(p);
+    if (p.deleting && !p.labels.some(l => l.id === p.deleting.id)) p.deleting = null;
+    if (p.deleting) return h('div', null, renderDeleteWarning());
     return h(
       'div',
       null,
@@ -583,6 +607,7 @@
                 );
               }
               const label = option.label;
+              if (p.renaming?.id === label.id) return renderRenameRow(label);
               return h(
                 'li',
                 { class: active.trim() || null },
@@ -607,6 +632,7 @@
                   }),
                   h('span', null, label.name),
                 ),
+                renderRowActions(label),
               );
             }),
           )
@@ -701,8 +727,194 @@
     return saved.length === p.selection.size && saved.every(id => p.selection.has(id));
   }
 
+  // Esc backs out of renaming, the delete warning or a ⋯ menu first, then closes.
   function escape() {
-    closePanel();
+    const p = panel;
+    if (p.renaming || p.deleting || p.menu) {
+      const id = p.renaming?.id ?? p.deleting?.id ?? p.menu;
+      p.renaming = p.deleting = p.menu = null;
+      p.focusKey = `more-${id}`;
+      renderPanel();
+    } else closePanel();
+  }
+
+  // ---------- Rename and Delete a label (the ⋯ on each row) ----------
+
+  function applyLabelState(p, state) {
+    p.labels = state.labels;
+    p.post = state.post;
+    if (!state.post) p.wasSaved = false;
+    const ids = new Set(state.labels.map(l => l.id));
+    p.selection = new Set([...p.selection].filter(id => ids.has(id)));
+    p.added = p.added.filter(id => ids.has(id));
+  }
+
+  async function renameLabel() {
+    const p = panel;
+    const { id, value } = p.renaming;
+    try {
+      const state = await send('renameLabel', { labelId: id, name: value, postId: p.postId });
+      if (panel !== p) return;
+      applyLabelState(p, state);
+      p.renaming = null;
+      p.focusKey = 'query';
+    } catch (err) {
+      if (panel !== p) return;
+      p.renaming = { ...p.renaming, error: err.message };
+      p.focusKey = `rename-${id}`;
+    }
+    renderPanel();
+  }
+
+  async function deleteLabel() {
+    const p = panel;
+    const { id } = p.deleting;
+    try {
+      const state = await send('deleteLabel', { labelId: id, postId: p.postId });
+      if (panel !== p) return;
+      applyLabelState(p, state);
+      p.deleting = null;
+      p.focusKey = 'query';
+    } catch (err) {
+      if (panel !== p) return;
+      p.deleting = { id, error: err.message };
+    }
+    renderPanel();
+  }
+
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+  function renderDeleteWarning() {
+    const p = panel;
+    const label = p.labels.find(l => l.id === p.deleting.id);
+    if (!label) return null;
+    const { count, only } = label;
+    let also = '';
+    if (only && only === count) {
+      also =
+        count === 1
+          ? 'That post has no other label, so it will be deleted too.'
+          : 'Those posts have no other label, so they will be deleted too.';
+    } else if (only) {
+      also = `${plural(only, 'post')} ${only === 1 ? 'has' : 'have'} no other label and will be deleted too.`;
+    }
+    return h(
+      'div',
+      { class: 'warn', role: 'alertdialog', 'aria-label': 'Delete label' },
+      h(
+        'p',
+        { class: 'title' },
+        'Deleting the ',
+        h('em', null, label.name),
+        count
+          ? ` label will remove it from ${plural(count, 'post')} and cannot be undone.`
+          : ' label cannot be undone.',
+      ),
+      also && h('p', null, also),
+      h('p', null, 'Do you want to permanently delete it?'),
+      p.deleting.error && h('div', { class: 'error', role: 'alert' }, p.deleting.error),
+      h(
+        'div',
+        { class: 'actions' },
+        h(
+          'button',
+          { class: 'btn primary', type: 'button', 'data-focus': 'delete-cancel', onClick: escape },
+          'Never mind',
+        ),
+        h('button', { class: 'btn danger', type: 'button', onClick: deleteLabel }, 'Permanently delete it'),
+      ),
+    );
+  }
+
+  function renderRenameRow(label) {
+    const p = panel;
+    return h(
+      'li',
+      null,
+      h(
+        'div',
+        { class: 'rename' },
+        h('input', {
+          type: 'text',
+          value: p.renaming.value,
+          maxlength: '80',
+          autocomplete: 'off',
+          spellcheck: 'false',
+          'aria-label': `Rename ${label.name}`,
+          'data-focus': `rename-${label.id}`,
+          onInput: e => {
+            p.renaming.value = e.target.value;
+            p.renaming.error = '';
+          },
+          onKeydown: e => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            renameLabel();
+          },
+        }),
+        p.renaming.error && h('div', { class: 'error', role: 'alert' }, p.renaming.error),
+      ),
+      h('div', { class: 'row-actions' }, h('button', { class: 'mini', type: 'button', onClick: renameLabel }, 'Save')),
+    );
+  }
+
+  function renderRowActions(label) {
+    const p = panel;
+    if (p.menu !== label.id) {
+      return h(
+        'div',
+        { class: 'row-actions' },
+        h(
+          'button',
+          {
+            class: 'more',
+            type: 'button',
+            'aria-label': `Options for ${label.name}`,
+            title: 'Rename or delete',
+            'data-focus': `more-${label.id}`,
+            onClick: () => {
+              p.menu = label.id;
+              p.focusKey = `rename-btn-${label.id}`;
+              renderPanel();
+            },
+          },
+          '\u22EF',
+        ),
+      );
+    }
+    return h(
+      'div',
+      { class: 'row-actions' },
+      h(
+        'button',
+        {
+          class: 'mini',
+          type: 'button',
+          'data-focus': `rename-btn-${label.id}`,
+          onClick: () => {
+            p.menu = null;
+            p.renaming = { id: label.id, value: label.name, error: '' };
+            p.focusKey = `rename-${label.id}`;
+            renderPanel();
+          },
+        },
+        'Rename',
+      ),
+      h(
+        'button',
+        {
+          class: 'mini danger',
+          type: 'button',
+          onClick: () => {
+            p.menu = null;
+            p.deleting = { id: label.id, error: '' };
+            p.focusKey = 'delete-cancel';
+            renderPanel();
+          },
+        },
+        'Delete',
+      ),
+    );
   }
 
   async function save() {
