@@ -966,7 +966,12 @@
   // most of the screen. It gets outlined while the picker is open, so the choice is visible.
   function postForShortcut() {
     scan();
-    const entries = [...buttons].filter(([, e]) => e.host.isConnected && e.container.isConnected);
+    // Only posts actually on screen (LinkedIn keeps pages you've left around, squashed to nothing).
+    const entries = [...buttons].filter(([, e]) => {
+      if (!e.host.isConnected || !e.container.isConnected) return false;
+      const r = e.container.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    });
     const hovered = [...document.querySelectorAll(':hover')].pop();
     if (hovered) {
       const match = entries.find(([, e]) => e.container.contains(hovered));
@@ -985,20 +990,35 @@
     return best;
   }
 
+  // The shortcut reaches every LinkedIn frame in the tab (LinkedIn shows some pages, like Saved
+  // posts, inside an embedded frame). The frame with a post on screen handles it; when none has
+  // one, only the frame holding the page's main content says so. Returns whether this frame acted.
+  const isTop = window === window.top;
+  const isBig = () => window.innerWidth > 200 && window.innerHeight > 200;
+  const bigLinkedInFrame = () =>
+    [...document.querySelectorAll('iframe')].some(f => {
+      const r = f.getBoundingClientRect();
+      return r.width > 200 && r.height > 200 && /^https:\/\/www\.linkedin\.com\//.test(f.src);
+    });
+
   function handleShortcut() {
     if (panel) {
       closePanel();
-      return;
+      return true;
     }
+    if (!isBig()) return false;
     const found = postForShortcut();
     if (!found) {
+      if (isTop ? bigLinkedInFrame() : false) return false;
+      if (!isTop && !buttons.size) return false;
       toast('No post to label here. Scroll to a post, or point at one, and try again.');
-      return;
+      return true;
     }
     const [id, entry] = found;
     const r = entry.button.getBoundingClientRect();
     const buttonInView = r.top >= 0 && r.bottom <= window.innerHeight;
     openPanel(id, entry.container, buttonInView ? entry.button : entry.container, { viaKeyboard: true });
+    return true;
   }
 
   let toastTimer = 0;
@@ -1065,10 +1085,7 @@
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (sender.id !== chrome.runtime.id) return false;
-    if (message?.type === 'labels-shortcut') {
-      handleShortcut();
-      sendResponse({ handled: true });
-    }
+    if (message?.type === 'labels-shortcut' && handleShortcut()) sendResponse({ handled: true });
     return false;
   });
 

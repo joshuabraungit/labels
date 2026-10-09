@@ -53,6 +53,9 @@ const FEED = 'https://www.linkedin.com/feed/';
 const FEED2 = 'https://www.linkedin.com/feed/following/';
 const FEED3 = 'https://www.linkedin.com/feed/hashtag/sdui/';
 const SAVED = 'https://www.linkedin.com/my-items/saved-posts/';
+// How LinkedIn shows Saved posts when you click in from the feed: the feed stays in the page,
+// squashed to nothing, and the Saved list loads in an embedded /preload/ frame.
+const SAVED_EMBEDDED = 'https://www.linkedin.com/my-items/saved-posts-embedded/';
 const POST_C = 'https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/';
 const POST_D = 'https://www.linkedin.com/feed/update/urn:li:activity:7444444444444444444/';
 const POST_E = 'https://www.linkedin.com/feed/update/urn:li:activity:7555555555555555555/';
@@ -85,7 +88,15 @@ async function launch() {
     } else if (url.startsWith(FEED2)) body = read('feed-new-markup.html');
     else if (url.startsWith(FEED3)) body = read('feed-sdui.html');
     else if (url.startsWith(SAVED)) body = read('saved-posts.html');
-    else body = read('feed.html');
+    else if (url.startsWith('https://www.linkedin.com/preload/')) body = read('saved-posts.html');
+    else if (url.startsWith(SAVED_EMBEDDED)) {
+      body = `<!doctype html><html><body><main>
+        <div style="height:0;overflow:hidden"><div data-urn="urn:li:activity:7340000000000000001">
+          <p>Hidden copy in the feed</p><button aria-label="Like">Like</button><button aria-label="Comment">Comment</button>
+          <button aria-label="Repost">Repost</button></div></div>
+        <iframe src="/preload/?_bprMode=vanilla" style="width:1000px;height:800px;border:0"></iframe>
+      </main></body></html>`;
+    } else body = read('feed.html');
     return route.fulfill({ contentType: 'text/html', body });
   });
   // LinkedIn's image server: a tiny picture for every avatar and post image.
@@ -951,6 +962,24 @@ try {
     await saved.close();
   });
 
+  await check("LinkedIn's Saved posts page inside LinkedIn's embedded /preload/ frame", async () => {
+    const page = await context.newPage();
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await page.goto(SAVED_EMBEDDED);
+    const frame = page.frameLocator('iframe[src*="/preload/"]');
+    const P1 = 'urn:li:activity:7340000000000000001';
+    const P2 = 'urn:li:activity:7340000000000000002';
+    await feedButton(frame, P2).waitFor({ timeout: 5000 });
+    assert.ok(await feedButton(frame, P1).isVisible());
+    await feedButton(frame, P2).click();
+    assert.match(await panel(frame).getAttribute('data-excerpt'), /^Saved post two/);
+    await frame.getByLabel('Find or create a label').fill('Embedded');
+    await frame.getByLabel('Find or create a label').press('Enter');
+    await panel(frame).getByRole('button', { name: 'Save', exact: true }).click();
+    await feedButton(frame, P2).getByText('Embedded', { exact: true }).waitFor();
+    await page.close();
+  });
+
   // ---------- keyboard shortcut ----------
   // Automation can't press a Chrome command shortcut, so these send the same message the
   // background worker sends when the shortcut is pressed.
@@ -1043,6 +1072,21 @@ try {
     await pressShortcut(FEED3);
     await panel(sdui).waitFor({ state: 'detached' });
     await sdui.close();
+  });
+
+  await check('shortcut: works inside the embedded Saved posts frame, and only there', async () => {
+    const page = await context.newPage();
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await page.goto(SAVED_EMBEDDED);
+    const frame = page.frameLocator('iframe[src*="/preload/"]');
+    const P1 = 'urn:li:activity:7340000000000000001';
+    await feedButton(frame, P1).waitFor({ timeout: 5000 });
+    await frame.locator('[data-chameleon-result-urn="' + P1 + '"]').hover();
+    await pressShortcut(SAVED_EMBEDDED);
+    await panel(frame).waitFor();
+    assert.match(await panel(frame).getAttribute('data-excerpt'), /^Saved post one/);
+    assert.equal(await page.locator('[data-labels-ui="toast"], [data-labels-ui="panel"]').count(), 0, 'top page quiet');
+    await page.close();
   });
 
   await check('shortcut: explains when there is no post to label', async () => {
